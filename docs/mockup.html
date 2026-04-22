@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sarvam Hiring · Exec Dashboard (Mockup)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Inter+Tight:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        display: ['"Inter Tight"', 'Inter', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+      },
+      colors: {
+        ink: { DEFAULT: '#0A0A0B', 2: '#2A2A2E', 3: '#6B6B72' },
+        paper: { DEFAULT: '#FFFFFF', 2: '#FAFAF7' },
+        hairline: '#EAEAE4',
+        sv: {
+          blue: '#2F5BFF', blueSoft: '#7AA0FF', blueInk: '#1336B5',
+          orange: '#FF6A1A', orangeSoft: '#FFB37A', orangeInk: '#C9450A',
+          purple: '#8B4DE8',
+        },
+        stage: {
+          applied: '#7AA0FF', r1: '#5A7EFF', r2: '#4F68F0',
+          r3: '#8B4DE8', r4: '#B85BD9', final: '#E85BBE',
+          offer: '#FF6A1A', hired: '#16A34A', archived: '#6B6B72',
+        },
+      },
+      boxShadow: {
+        card: '0 1px 2px rgba(10,10,11,0.04), 0 8px 24px rgba(10,10,11,0.04)',
+        float: '0 12px 40px rgba(47,91,255,0.12)',
+      },
+      borderRadius: { md2: '10px', lg2: '16px', xl2: '24px' },
+    },
+  },
+};
+</script>
+<style>
+  html { -webkit-text-size-adjust: 100%; }
+  body { font-feature-settings: "tnum" 1, "cv11" 1, "ss01" 1; background: #FAFAF7; }
+  .tnum { font-variant-numeric: tabular-nums; }
+  .sv-gradient { background: linear-gradient(135deg, #2F5BFF 0%, #8B4DE8 50%, #FF6A1A 100%); }
+  .sv-gradient-soft { background: linear-gradient(135deg, rgba(47,91,255,0.08) 0%, rgba(139,77,232,0.08) 50%, rgba(255,106,26,0.08) 100%); }
+  .sv-gradient-text { background: linear-gradient(135deg, #2F5BFF 0%, #8B4DE8 50%, #FF6A1A 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .row-hover:hover { background: rgba(47,91,255,0.04); }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 500; line-height: 1.4; }
+  .dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+
+  /* Big board KPI */
+  .board { position: relative; overflow: hidden; }
+  .board::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 3px; }
+  .board.applied::before { background: #2F5BFF; }
+  .board.live::before    { background: linear-gradient(90deg, #2F5BFF, #8B4DE8); }
+  .board.offered::before { background: #FF6A1A; }
+  .board.rejected::before { background: #6B6B72; }
+
+  /* Matrix heatmap cells */
+  .cell-0  { background: transparent; color: #B4B4BB; }
+  .cell-1  { background: rgba(47,91,255,0.05); }
+  .cell-2  { background: rgba(47,91,255,0.10); }
+  .cell-3  { background: rgba(47,91,255,0.16); }
+  .cell-4  { background: rgba(47,91,255,0.24); color: #1336B5; }
+  .cell-5  { background: rgba(47,91,255,0.32); color: #1336B5; font-weight: 600; }
+  .cell-offer-1  { background: rgba(255,106,26,0.10); color: #C9450A; font-weight: 600; }
+  .cell-offer-2  { background: rgba(255,106,26,0.22); color: #C9450A; font-weight: 700; }
+  .cell-hired    { background: rgba(22,163,74,0.12); color: #15803d; font-weight: 700; }
+
+  .tab-active { color: #0A0A0B; position: relative; }
+  .tab-active::after { content: ''; display: block; height: 2px; background: linear-gradient(135deg, #2F5BFF 0%, #FF6A1A 100%); border-radius: 2px; margin-top: 8px; }
+  .tab-inactive { color: #6B6B72; }
+  .tab-inactive:hover { color: #2A2A2E; }
+
+  .scrollbar-thin::-webkit-scrollbar { height: 8px; width: 8px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #EAEAE4; border-radius: 4px; }
+  .fade-in { animation: fadeIn 200ms ease-out; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  .sticky-col { position: sticky; left: 0; background: white; z-index: 1; }
+  .sticky-col-hover:hover { background: rgba(47,91,255,0.04); }
+
+  details > summary { list-style: none; cursor: pointer; }
+  details > summary::-webkit-details-marker { display: none; }
+</style>
+</head>
+<body class="font-sans text-ink antialiased">
+
+<!-- ============== TOP BAR ============== -->
+<header class="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-hairline">
+  <div class="max-w-[1440px] mx-auto px-4 sm:px-6 h-14 flex items-center gap-3 sm:gap-6">
+    <div class="flex items-center gap-2">
+      <div class="w-7 h-7 rounded-md sv-gradient flex items-center justify-center">
+        <span class="text-white text-[11px] font-bold tracking-wider">SV</span>
+      </div>
+      <span class="font-display font-bold text-[15px] tracking-tight hidden sm:inline">Sarvam Hiring</span>
+    </div>
+
+    <nav class="hidden md:flex items-center gap-1 ml-2">
+      <button class="nav-btn px-3 py-1.5 rounded-md2 text-[13px] font-medium" data-tab="overview">Overview</button>
+      <button class="nav-btn px-3 py-1.5 rounded-md2 text-[13px] font-medium" data-tab="roles">Roles</button>
+      <button class="nav-btn px-3 py-1.5 rounded-md2 text-[13px] font-medium" data-tab="role">Role detail</button>
+      <button class="px-3 py-1.5 rounded-md2 text-[13px] font-medium text-ink-3 cursor-not-allowed" disabled>Velocity</button>
+      <button class="px-3 py-1.5 rounded-md2 text-[13px] font-medium text-ink-3 cursor-not-allowed" disabled>Sources</button>
+      <button class="px-3 py-1.5 rounded-md2 text-[13px] font-medium text-ink-3 cursor-not-allowed" disabled>People</button>
+    </nav>
+
+    <div class="flex-1"></div>
+
+    <div class="hidden sm:flex items-center gap-2 text-[12px] text-ink-3">
+      <span class="dot bg-stage-hired"></span>
+      <span class="tnum">Last synced 2h 14m ago</span>
+    </div>
+    <button id="refreshBtn" class="h-9 px-3 sm:px-4 rounded-md2 sv-gradient text-white text-[13px] font-semibold shadow-float hover:opacity-95 active:opacity-90 transition">
+      <span id="refreshLabel">Refresh now</span>
+    </button>
+  </div>
+
+  <nav class="md:hidden flex items-center gap-1 px-4 pb-2 overflow-x-auto scrollbar-thin">
+    <button class="nav-btn shrink-0 px-3 py-1.5 rounded-md2 text-[13px] font-medium" data-tab="overview">Overview</button>
+    <button class="nav-btn shrink-0 px-3 py-1.5 rounded-md2 text-[13px] font-medium" data-tab="roles">Roles</button>
+    <button class="nav-btn shrink-0 px-3 py-1.5 rounded-md2 text-[13px] font-medium" data-tab="role">Role detail</button>
+  </nav>
+</header>
+
+<!-- ============== OVERVIEW TAB ============== -->
+<section id="tab-overview" class="tab-panel fade-in">
+
+  <div class="max-w-[1440px] mx-auto px-4 sm:px-6 pt-8 pb-8">
+
+    <!-- ========== 1. BIG BOARD NUMBERS ========== -->
+    <div class="mb-10">
+      <div class="flex items-end justify-between mb-5 flex-wrap gap-3">
+        <div>
+          <div class="text-[11px] uppercase tracking-[0.14em] text-ink-3 font-semibold">01</div>
+          <h2 class="font-display text-2xl sm:text-3xl lg:text-[32px] font-bold leading-tight mt-1">Where the pipeline stands today</h2>
+        </div>
+        <div class="text-[12px] text-ink-3 tnum">As of Apr 22, 2026 · 09:48 IST</div>
+      </div>
+
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="board applied bg-white border border-hairline rounded-lg2 p-5 sm:p-6 shadow-card">
+          <div class="text-[11px] uppercase tracking-wider text-ink-3 font-semibold">Applications</div>
+          <div class="font-display text-5xl sm:text-6xl font-extrabold mt-3 tnum leading-none">1,247</div>
+          <div class="text-[12px] text-ink-3 mt-2">total received across 14 roles</div>
+          <div class="pill bg-green-50 text-green-700 mt-3"><span>▲</span>231 last 7d</div>
+        </div>
+
+        <div class="board live bg-white border border-hairline rounded-lg2 p-5 sm:p-6 shadow-card">
+          <div class="text-[11px] uppercase tracking-wider text-ink-3 font-semibold">Live</div>
+          <div class="font-display text-5xl sm:text-6xl font-extrabold mt-3 tnum leading-none sv-gradient-text">482</div>
+          <div class="text-[12px] text-ink-3 mt-2">in application review + interview pipeline</div>
+          <div class="pill bg-green-50 text-green-700 mt-3"><span>▲</span>40 this week</div>
+        </div>
+
+        <div class="board offered bg-white border border-hairline rounded-lg2 p-5 sm:p-6 shadow-card">
+          <div class="text-[11px] uppercase tracking-wider text-ink-3 font-semibold">Offered</div>
+          <div class="font-display text-5xl sm:text-6xl font-extrabold mt-3 tnum leading-none text-sv-orangeInk">7</div>
+          <div class="text-[12px] text-ink-3 mt-2">offers currently out to candidates</div>
+          <div class="pill bg-red-50 text-red-700 mt-3"><span>▼</span>1 vs last week</div>
+        </div>
+
+        <div class="board rejected bg-white border border-hairline rounded-lg2 p-5 sm:p-6 shadow-card">
+          <div class="text-[11px] uppercase tracking-wider text-ink-3 font-semibold">Rejected</div>
+          <div class="font-display text-5xl sm:text-6xl font-extrabold mt-3 tnum leading-none text-ink-2">756</div>
+          <div class="text-[12px] text-ink-3 mt-2">archived, all time</div>
+          <div class="pill bg-gray-100 text-ink-3 mt-3"><span>▲</span>18 this week</div>
+        </div>
+      </div>
+
+      <!-- Above-the-fold attention strip — "what are we doing here?" call-out -->
+      <a href="#stuck" class="group mt-4 flex items-center justify-between gap-4 flex-wrap bg-gradient-to-r from-orange-50 via-orange-50/60 to-transparent border border-sv-orange/30 border-l-[3px] border-l-sv-orange rounded-lg2 px-4 sm:px-5 py-3 hover:shadow-card transition">
+        <div class="flex items-center gap-3 flex-wrap">
+          <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-sv-orange/15 text-sv-orangeInk font-bold">!</span>
+          <div>
+            <div class="text-[11px] uppercase tracking-wider text-sv-orangeInk font-semibold flex items-center gap-2">
+              <span class="inline-block w-1.5 h-1.5 rounded-full bg-sv-orange animate-pulse"></span>
+              What are we doing here?
+            </div>
+            <div class="text-[14px] text-ink font-medium mt-0.5">
+              <span class="font-semibold tnum">5 candidates</span> sitting past SLA ·
+              <span class="font-semibold tnum">2 critical</span> (overdue 5d+) ·
+              <span class="text-ink-3">most impacted: Ravi T.</span>
+            </div>
+          </div>
+        </div>
+        <div class="text-[13px] font-medium text-sv-blue group-hover:underline">Review below ↓</div>
+      </a>
+    </div>
+
+    <!-- ========== 2. ROLE x STAGE MATRIX ========== -->
+    <div class="mb-10">
+      <div class="flex items-end justify-between mb-5 flex-wrap gap-3">
+        <div>
+          <div class="text-[11px] uppercase tracking-[0.14em] text-ink-3 font-semibold">02</div>
+          <h2 class="font-display text-2xl sm:text-3xl lg:text-[32px] font-bold leading-tight mt-1">Role by role, stage by stage</h2>
+          <p class="text-[13px] text-ink-3 mt-1.5 max-w-[640px]">Every open role, every stage. The totals row up top answers the macro question; rows below show where each role is leaning.</p>
+        </div>
+        <div class="flex items-center gap-2 text-[11px] text-ink-3">
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded cell-1 inline-block"></span>few</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded cell-3 inline-block"></span>some</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded cell-5 inline-block"></span>many</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded cell-offer-2 inline-block"></span>offer out</span>
+        </div>
+      </div>
+
+      <!-- TOPLINE TOTALS STRIP — answers first -->
+      <div class="bg-white border border-hairline rounded-lg2 shadow-card mb-3 overflow-hidden">
+        <div class="px-4 sm:px-5 py-2 bg-paper-2 border-b border-hairline text-[11px] uppercase tracking-wider text-ink-3 font-semibold flex items-center justify-between gap-2 flex-wrap">
+          <span>Total across all 14 roles</span>
+          <span class="text-ink-3 normal-case tracking-normal">Active candidates now, by stage</span>
+        </div>
+        <div class="overflow-x-auto scrollbar-thin">
+          <table class="w-full text-[14px] tnum">
+            <tbody>
+              <tr id="matrixTotalsRow" class="font-display"></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="bg-white border border-hairline rounded-lg2 shadow-card overflow-hidden">
+        <div class="overflow-x-auto scrollbar-thin">
+          <table class="w-full text-[13px] tnum">
+            <thead class="text-[11px] uppercase tracking-wider text-ink-3 bg-paper-2 border-b border-hairline">
+              <tr class="text-left">
+                <th class="px-4 py-3 font-semibold sticky-col bg-paper-2 min-w-[220px]">Role</th>
+                <th class="px-3 py-3 font-semibold text-right">Applied</th>
+                <th class="px-3 py-3 font-semibold text-right bg-sv-blue/5">Review</th>
+                <th class="px-3 py-3 font-semibold text-right bg-sv-blue/5">R1</th>
+                <th class="px-3 py-3 font-semibold text-right bg-sv-blue/5">R2</th>
+                <th class="px-3 py-3 font-semibold text-right bg-sv-blue/5">R3</th>
+                <th class="px-3 py-3 font-semibold text-right bg-sv-blue/5">R4</th>
+                <th class="px-3 py-3 font-semibold text-right bg-sv-blue/5">Final</th>
+                <th class="px-3 py-3 font-semibold text-right" style="background:rgba(255,106,26,0.06);color:#C9450A;">Offer</th>
+                <th class="px-3 py-3 font-semibold text-right" style="background:rgba(22,163,74,0.06);color:#15803d;">Hired</th>
+                <th class="px-3 py-3 font-semibold text-right">Archived</th>
+                <th class="px-3 py-3 font-semibold text-right bg-paper-2">Live</th>
+              </tr>
+            </thead>
+            <tbody id="matrixTbody" class="divide-y divide-hairline"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="text-[11px] text-ink-3 mt-3">
+        "Live" = Review + R1 + R2 + R3 + R4 + Final + Offer. Numbers match Ashby's native role view to ±1 candidate.
+      </div>
+    </div>
+
+    <!-- ========== 3. SOURCES + 7D INFLOW ========== -->
+    <div class="mb-10">
+      <div class="flex items-end justify-between mb-5 flex-wrap gap-3">
+        <div>
+          <div class="text-[11px] uppercase tracking-[0.14em] text-ink-3 font-semibold">03</div>
+          <h2 class="font-display text-2xl sm:text-3xl lg:text-[32px] font-bold leading-tight mt-1">Where candidates come from, and when they arrive</h2>
+          <p class="text-[13px] text-ink-3 mt-1.5 max-w-[640px]">Left: the mix of sources feeding the pipeline this month. Right: how many applications we got each day last week.</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+        <!-- Sources donut -->
+        <div class="bg-white border border-hairline rounded-lg2 p-4 sm:p-5 shadow-card">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <div class="font-semibold text-[15px]">Source mix</div>
+              <div class="text-[12px] text-ink-3">Applications last 30 days, excluding Kula_Migrated and Unspecified</div>
+            </div>
+            <span class="pill bg-paper-2 border border-hairline text-ink-3">856 apps</span>
+          </div>
+
+          <div class="flex items-center gap-6 flex-wrap">
+            <div class="relative w-[200px] h-[200px] mx-auto">
+              <canvas id="sourceDonut"></canvas>
+              <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <div class="text-[11px] text-ink-3 uppercase tracking-wider">Total</div>
+                <div class="font-display text-3xl font-extrabold tnum">856</div>
+              </div>
+            </div>
+            <div class="flex-1 min-w-[220px] space-y-2">
+              <div class="flex items-center justify-between gap-3 text-[13px]">
+                <span class="flex items-center gap-2"><span class="dot" style="background:#2F5BFF"></span>Applied (direct)</span>
+                <span class="tnum"><span class="font-semibold">347</span> <span class="text-ink-3">· 40.5%</span></span>
+              </div>
+              <div class="flex items-center justify-between gap-3 text-[13px]">
+                <span class="flex items-center gap-2"><span class="dot" style="background:#0A66C2"></span>LinkedIn</span>
+                <span class="tnum"><span class="font-semibold">224</span> <span class="text-ink-3">· 26.2%</span></span>
+              </div>
+              <div class="flex items-center justify-between gap-3 text-[13px]">
+                <span class="flex items-center gap-2"><span class="dot" style="background:#8B4DE8"></span>Cold email</span>
+                <span class="tnum"><span class="font-semibold">138</span> <span class="text-ink-3">· 16.1%</span></span>
+              </div>
+              <div class="flex items-center justify-between gap-3 text-[13px]">
+                <span class="flex items-center gap-2"><span class="dot" style="background:#16A34A"></span>Referral</span>
+                <span class="tnum"><span class="font-semibold">92</span> <span class="text-ink-3">· 10.7%</span></span>
+              </div>
+              <div class="flex items-center justify-between gap-3 text-[13px]">
+                <span class="flex items-center gap-2"><span class="dot" style="background:#003A9B"></span>Indeed</span>
+                <span class="tnum"><span class="font-semibold">55</span> <span class="text-ink-3">· 6.4%</span></span>
+              </div>
+              <div class="pt-2 mt-2 border-t border-hairline text-[11px] text-ink-3">
+                Best conversion: <span class="text-green-700 font-semibold">Referral</span> (55% reach interview)
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 7d applications per day -->
+        <div class="bg-white border border-hairline rounded-lg2 p-4 sm:p-5 shadow-card">
+          <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div>
+              <div class="font-semibold text-[15px]">Applications per day, last 7 days</div>
+              <div class="text-[12px] text-ink-3">Stacked by source · today is outlined</div>
+            </div>
+            <div class="text-right">
+              <div class="text-[11px] uppercase tracking-wider text-ink-3 font-semibold">Total this week</div>
+              <div class="font-display text-2xl font-extrabold tnum leading-none">231</div>
+            </div>
+          </div>
+
+          <div class="relative h-[260px]"><canvas id="inflowChart"></canvas></div>
+
+          <div class="mt-3 pt-3 border-t border-hairline text-[12px] text-ink-3 flex items-center justify-between flex-wrap gap-2">
+            <span>Avg: <span class="font-semibold text-ink">33/day</span></span>
+            <span>Peak: <span class="font-semibold text-ink">Tue · 48</span></span>
+            <span>vs previous week: <span class="font-semibold text-green-700">+22%</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== 4. STUCK CANDIDATES (EXEC CALL-OUT) ========== -->
+    <div id="stuck" class="mb-4 scroll-mt-20">
+      <div class="flex items-end justify-between mb-4 flex-wrap gap-3">
+        <div>
+          <div class="text-[11px] uppercase tracking-wider text-sv-orangeInk font-semibold flex items-center gap-2">
+            <span class="inline-block w-2 h-2 rounded-full bg-sv-orange animate-pulse"></span>
+            04 · Attention needed
+          </div>
+          <h2 class="font-display text-xl sm:text-2xl font-bold mt-1">What are we doing here?</h2>
+          <div class="text-[13px] text-ink-3 mt-1">Candidates sitting past their stage SLA. Each day they wait is a day a competitor doesn't.</div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="text-right">
+            <div class="text-[11px] uppercase tracking-wider text-ink-3 font-semibold">Stuck now</div>
+            <div class="font-display text-3xl sm:text-4xl font-extrabold text-sv-orangeInk leading-none tnum">5</div>
+          </div>
+          <div class="h-12 w-px bg-hairline"></div>
+          <div class="text-right">
+            <div class="text-[11px] uppercase tracking-wider text-ink-3 font-semibold">Avg overdue</div>
+            <div class="font-display text-3xl sm:text-4xl font-extrabold text-ink leading-none tnum">5.8<span class="text-xl text-ink-3 font-semibold">d</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white border-l-[3px] border-l-sv-orange border-y border-r border-hairline rounded-lg2 shadow-card overflow-hidden">
+        <div class="px-5 py-2.5 bg-orange-50 border-b border-hairline flex items-center justify-between flex-wrap gap-2 text-[12px]">
+          <div class="flex items-center gap-2 text-sv-orangeInk">
+            <span>⚠</span>
+            <span><span class="font-semibold">2 critical</span> (overdue 5d+) · <span class="font-semibold">3 high</span> (overdue 1-4d)</span>
+          </div>
+          <div class="text-ink-3">SLA: Review ≤ 5d · R1-Final ≤ 7d</div>
+        </div>
+        <div class="overflow-x-auto scrollbar-thin">
+          <table class="w-full text-[13px] tnum">
+            <thead class="text-[11px] uppercase tracking-wider text-ink-3 bg-paper-2 border-b border-hairline">
+              <tr class="text-left">
+                <th class="px-5 py-2.5 font-semibold">Severity</th>
+                <th class="px-4 py-2.5 font-semibold">Candidate</th>
+                <th class="px-4 py-2.5 font-semibold">Role</th>
+                <th class="px-4 py-2.5 font-semibold">Stage</th>
+                <th class="px-4 py-2.5 font-semibold text-right">In stage</th>
+                <th class="px-4 py-2.5 font-semibold text-right">Overdue by</th>
+                <th class="px-4 py-2.5 font-semibold">Owner</th>
+                <th class="px-4 py-2.5 font-semibold text-right"></th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-hairline">
+              <tr class="row-hover">
+                <td class="px-5 py-3"><span class="pill" style="background:#FEE2E2; color:#991B1B"><span class="dot" style="background:#DC2626"></span>Critical</span></td>
+                <td class="px-4 py-3 font-medium">Anika Shah</td>
+                <td class="px-4 py-3">Senior Backend Engineer</td>
+                <td class="px-4 py-3"><span class="pill" style="background:#E0E5FD; color:#1336B5"><span class="dot bg-stage-r2"></span>Round 2</span></td>
+                <td class="px-4 py-3 text-right text-ink-3">14d</td>
+                <td class="px-4 py-3 text-right"><span class="font-semibold text-red-700">+7d</span></td>
+                <td class="px-4 py-3 text-ink-3">Ravi T.</td>
+                <td class="px-4 py-3 text-right"><a href="#" class="text-sv-blue font-medium hover:underline">Nudge ↗</a></td>
+              </tr>
+              <tr class="row-hover">
+                <td class="px-5 py-3"><span class="pill" style="background:#FEE2E2; color:#991B1B"><span class="dot" style="background:#DC2626"></span>Critical</span></td>
+                <td class="px-4 py-3 font-medium">Karan Gupta</td>
+                <td class="px-4 py-3">Forward Deployed Engineer</td>
+                <td class="px-4 py-3"><span class="pill" style="background:#E6EBFF; color:#1336B5"><span class="dot bg-stage-r1"></span>Round 1</span></td>
+                <td class="px-4 py-3 text-right text-ink-3">11d</td>
+                <td class="px-4 py-3 text-right"><span class="font-semibold text-red-700">+4d</span></td>
+                <td class="px-4 py-3 text-ink-3">Viru N.</td>
+                <td class="px-4 py-3 text-right"><a href="#" class="text-sv-blue font-medium hover:underline">Nudge ↗</a></td>
+              </tr>
+              <tr class="row-hover">
+                <td class="px-5 py-3"><span class="pill" style="background:#FFEDD5; color:#9A3412"><span class="dot" style="background:#F97316"></span>High</span></td>
+                <td class="px-4 py-3 font-medium">Priya Menon</td>
+                <td class="px-4 py-3">Product Designer</td>
+                <td class="px-4 py-3"><span class="pill" style="background:#FCEAF6; color:#9B1B6A"><span class="dot bg-stage-final"></span>Final</span></td>
+                <td class="px-4 py-3 text-right text-ink-3">9d</td>
+                <td class="px-4 py-3 text-right"><span class="font-semibold text-sv-orangeInk">+2d</span></td>
+                <td class="px-4 py-3 text-ink-3">Vaibhav V.</td>
+                <td class="px-4 py-3 text-right"><a href="#" class="text-sv-blue font-medium hover:underline">Nudge ↗</a></td>
+              </tr>
+              <tr class="row-hover">
+                <td class="px-5 py-3"><span class="pill" style="background:#FFEDD5; color:#9A3412"><span class="dot" style="background:#F97316"></span>High</span></td>
+                <td class="px-4 py-3 font-medium">Rohan Iyer</td>
+                <td class="px-4 py-3">Applied Scientist</td>
+                <td class="px-4 py-3"><span class="pill" style="background:#EAF0FF; color:#1336B5"><span class="dot bg-stage-applied"></span>Application Review</span></td>
+                <td class="px-4 py-3 text-right text-ink-3">8d</td>
+                <td class="px-4 py-3 text-right"><span class="font-semibold text-sv-orangeInk">+3d</span></td>
+                <td class="px-4 py-3 text-ink-3">Pratyush K.</td>
+                <td class="px-4 py-3 text-right"><a href="#" class="text-sv-blue font-medium hover:underline">Nudge ↗</a></td>
+              </tr>
+              <tr class="row-hover">
+                <td class="px-5 py-3"><span class="pill" style="background:#FFEDD5; color:#9A3412"><span class="dot" style="background:#F97316"></span>High</span></td>
+                <td class="px-4 py-3 font-medium">Neha Raghavan</td>
+                <td class="px-4 py-3">Senior Backend Engineer</td>
+                <td class="px-4 py-3"><span class="pill" style="background:#F3EEFB; color:#5A2CB2"><span class="dot bg-stage-r3"></span>Round 3</span></td>
+                <td class="px-4 py-3 text-right text-ink-3">7d</td>
+                <td class="px-4 py-3 text-right"><span class="font-semibold text-sv-orangeInk">+0d</span></td>
+                <td class="px-4 py-3 text-ink-3">Ravi T.</td>
+                <td class="px-4 py-3 text-right"><a href="#" class="text-sv-blue font-medium hover:underline">Nudge ↗</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="px-5 py-3 bg-paper-2 border-t border-hairline flex items-center justify-between flex-wrap gap-2 text-[12px] text-ink-3">
+          <span>Showing top 5 · <a href="#" class="text-sv-blue font-medium hover:underline">See all 12 overdue →</a></span>
+          <span>Owners most impacted: <span class="font-semibold text-ink">Ravi T. (2)</span> · Pratyush K., Viru N., Vaibhav V.</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============== ROLES TAB ============== -->
+<section id="tab-roles" class="tab-panel hidden">
+  <div class="max-w-[1440px] mx-auto px-4 sm:px-6 py-8">
+    <div class="flex items-center justify-between gap-3 flex-wrap mb-4">
+      <div>
+        <h2 class="font-display text-2xl font-bold">Roles <span class="text-ink-3 font-medium">(14 open)</span></h2>
+        <div class="text-[13px] text-ink-3 mt-1">Analytical view with 14-day trend sparklines. Click any row for details.</div>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <select class="bg-white border border-hairline rounded-md2 px-3 py-1.5 text-[13px]">
+          <option>All departments</option><option>Engineering</option><option>Research</option><option>Design</option><option>GTM</option>
+        </select>
+        <select class="bg-white border border-hairline rounded-md2 px-3 py-1.5 text-[13px]">
+          <option>All hiring managers</option><option>Ravi T.</option><option>Viru N.</option><option>Pratyush K.</option><option>Vaibhav V.</option>
+        </select>
+        <button class="bg-white border border-hairline rounded-md2 px-3 py-1.5 text-[13px] font-medium hover:bg-paper-2">Export CSV</button>
+      </div>
+    </div>
+
+    <div class="bg-white border border-hairline rounded-lg2 shadow-card overflow-hidden">
+      <div class="overflow-x-auto scrollbar-thin">
+        <table class="w-full text-[13px] tnum">
+          <thead class="text-[11px] uppercase tracking-wider text-ink-3 bg-paper-2 border-b border-hairline sticky top-0">
+            <tr class="text-left">
+              <th class="px-4 py-2.5 font-semibold">#</th>
+              <th class="px-4 py-2.5 font-semibold">Role</th>
+              <th class="px-4 py-2.5 font-semibold">Dept</th>
+              <th class="px-4 py-2.5 font-semibold">Hiring Mgr</th>
+              <th class="px-4 py-2.5 font-semibold text-right">Days Open</th>
+              <th class="px-4 py-2.5 font-semibold text-right">Applied</th>
+              <th class="px-4 py-2.5 font-semibold text-right">Live</th>
+              <th class="px-4 py-2.5 font-semibold text-right">Interview</th>
+              <th class="px-4 py-2.5 font-semibold text-right">Offers</th>
+              <th class="px-4 py-2.5 font-semibold text-right">Hired</th>
+              <th class="px-4 py-2.5 font-semibold text-right">Arch.</th>
+              <th class="px-4 py-2.5 font-semibold">14d trend</th>
+            </tr>
+          </thead>
+          <tbody id="rolesTbody" class="divide-y divide-hairline"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="text-[12px] text-ink-3 mt-3 flex items-center gap-4 flex-wrap">
+      <span class="flex items-center gap-1.5"><span class="pill bg-orange-50 text-sv-orangeInk">Days Open ≥ 60</span> flagged as stale</span>
+      <span class="flex items-center gap-1.5"><span class="pill bg-green-50 text-green-700">▲ trending</span> sparkline rising over 14 days</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============== ROLE DETAIL TAB ============== -->
+<section id="tab-role" class="tab-panel hidden">
+  <div class="max-w-[1440px] mx-auto px-4 sm:px-6 py-8">
+
+    <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-6">
+      <div>
+        <div class="text-[12px] text-ink-3 mb-1"><button class="hover:text-ink" data-tab="roles">Roles</button> › <span id="roleBreadcrumb">Senior Backend Engineer</span></div>
+        <h2 id="roleTitle" class="font-display text-2xl sm:text-3xl font-bold">Senior Backend Engineer</h2>
+        <div id="roleMeta" class="text-[13px] text-ink-3 mt-1 flex flex-wrap gap-x-4 gap-y-1">
+          <span>Engineering</span><span>· HM: Ravi T.</span><span>· Opened 42 days ago</span><span>· Bengaluru</span>
+        </div>
+      </div>
+      <a href="#" class="inline-flex items-center gap-2 bg-white border border-hairline rounded-md2 px-3 py-2 text-[13px] font-medium hover:bg-paper-2 self-start">
+        Open in Ashby <span class="text-ink-3">↗</span>
+      </a>
+    </div>
+
+    <div class="border-b border-hairline mb-6 flex gap-6 overflow-x-auto scrollbar-thin">
+      <button class="pb-2 text-[13px] font-semibold tab-active">Overview</button>
+      <button class="pb-2 text-[13px] font-medium tab-inactive">Pipeline</button>
+      <button class="pb-2 text-[13px] font-medium tab-inactive">Velocity</button>
+      <button class="pb-2 text-[13px] font-medium tab-inactive">Activity</button>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-[1fr,280px] gap-6">
+
+      <div class="space-y-6">
+
+        <!-- Funnel table -->
+        <div class="bg-white border border-hairline rounded-lg2 shadow-card">
+          <div class="px-5 py-4 border-b border-hairline">
+            <div class="font-semibold text-[15px]">Funnel</div>
+            <div class="text-[12px] text-ink-3">Application Review → Rounds → Offer → Archived</div>
+          </div>
+          <div class="overflow-x-auto scrollbar-thin">
+            <table class="w-full text-[13px] tnum">
+              <thead class="text-[11px] uppercase tracking-wider text-ink-3 bg-paper-2 border-b border-hairline">
+                <tr class="text-left">
+                  <th class="px-5 py-2.5 font-semibold">Stage</th>
+                  <th class="px-4 py-2.5 font-semibold text-right">Active now</th>
+                  <th class="px-4 py-2.5 font-semibold text-right">All-time</th>
+                  <th class="px-4 py-2.5 font-semibold text-right">Last 7d</th>
+                  <th class="px-4 py-2.5 font-semibold text-right">Median days</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-hairline">
+                <tr class="row-hover"><td class="px-5 py-3"><span class="pill" style="background:#EAF0FF; color:#1336B5"><span class="dot bg-stage-applied"></span>Application Review</span></td><td class="px-4 py-3 text-right font-semibold">11</td><td class="px-4 py-3 text-right">87</td><td class="px-4 py-3 text-right">9</td><td class="px-4 py-3 text-right">3.2</td></tr>
+                <tr class="row-hover"><td class="px-5 py-3"><span class="pill" style="background:#E6EBFF; color:#1336B5"><span class="dot bg-stage-r1"></span>Round 1</span></td><td class="px-4 py-3 text-right font-semibold">5</td><td class="px-4 py-3 text-right">34</td><td class="px-4 py-3 text-right">3</td><td class="px-4 py-3 text-right">5.1</td></tr>
+                <tr class="row-hover"><td class="px-5 py-3"><span class="pill" style="background:#E0E5FD; color:#1336B5"><span class="dot bg-stage-r2"></span>Round 2</span></td><td class="px-4 py-3 text-right font-semibold">3</td><td class="px-4 py-3 text-right">18</td><td class="px-4 py-3 text-right">1</td><td class="px-4 py-3 text-right text-sv-orangeInk font-semibold">7.4</td></tr>
+                <tr class="row-hover"><td class="px-5 py-3"><span class="pill" style="background:#F3EEFB; color:#5A2CB2"><span class="dot bg-stage-r3"></span>Round 3</span></td><td class="px-4 py-3 text-right font-semibold">1</td><td class="px-4 py-3 text-right">7</td><td class="px-4 py-3 text-right">0</td><td class="px-4 py-3 text-right">6.2</td></tr>
+                <tr class="row-hover"><td class="px-5 py-3"><span class="pill" style="background:#FAF0FC; color:#7F2B9A"><span class="dot bg-stage-r4"></span>Round 4</span></td><td class="px-4 py-3 text-right font-semibold">1</td><td class="px-4 py-3 text-right">4</td><td class="px-4 py-3 text-right">0</td><td class="px-4 py-3 text-right">4.8</td></tr>
+                <tr class="row-hover"><td class="px-5 py-3"><span class="pill" style="background:#FCEAF6; color:#9B1B6A"><span class="dot bg-stage-final"></span>Final</span></td><td class="px-4 py-3 text-right font-semibold">2</td><td class="px-4 py-3 text-right">6</td><td class="px-4 py-3 text-right">1</td><td class="px-4 py-3 text-right">3.1</td></tr>
+                <tr class="row-hover"><td class="px-5 py-3"><span class="pill" style="background:#FFEAD7; color:#C9450A"><span class="dot bg-stage-offer"></span>Offer</span></td><td class="px-4 py-3 text-right font-semibold text-sv-orangeInk">2</td><td class="px-4 py-3 text-right">3</td><td class="px-4 py-3 text-right">1</td><td class="px-4 py-3 text-right">4.0</td></tr>
+                <tr class="row-hover"><td class="px-5 py-3"><span class="pill" style="background:#E6F6EA; color:#15803d"><span class="dot bg-stage-hired"></span>Hired</span></td><td class="px-4 py-3 text-right font-semibold">0</td><td class="px-4 py-3 text-right">0</td><td class="px-4 py-3 text-right">0</td><td class="px-4 py-3 text-right text-ink-3">-</td></tr>
+                <tr class="row-hover"><td class="px-5 py-3"><span class="pill bg-gray-100 text-ink-3"><span class="dot bg-stage-archived"></span>Archived</span></td><td class="px-4 py-3 text-right font-semibold">55</td><td class="px-4 py-3 text-right">55</td><td class="px-4 py-3 text-right">4</td><td class="px-4 py-3 text-right text-ink-3">-</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Source table -->
+        <div class="bg-white border border-hairline rounded-lg2 shadow-card">
+          <div class="px-5 py-4 border-b border-hairline flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <div class="font-semibold text-[15px]">Source performance</div>
+              <div class="text-[12px] text-ink-3">Excluding Kula_Migrated and Unspecified</div>
+            </div>
+            <span class="pill bg-paper-2 border border-hairline text-ink-3">trailing 30 days</span>
+          </div>
+          <div class="overflow-x-auto scrollbar-thin">
+            <table class="w-full text-[13px] tnum">
+              <thead class="text-[11px] uppercase tracking-wider text-ink-3 bg-paper-2 border-b border-hairline">
+                <tr class="text-left">
+                  <th class="px-5 py-2.5 font-semibold">Source</th>
+                  <th class="px-4 py-2.5 font-semibold text-right">Applied</th>
+                  <th class="px-4 py-2.5 font-semibold text-right">Past Review</th>
+                  <th class="px-4 py-2.5 font-semibold text-right">Interview</th>
+                  <th class="px-4 py-2.5 font-semibold text-right">Offered</th>
+                  <th class="px-4 py-2.5 font-semibold text-right">Hired</th>
+                  <th class="px-4 py-2.5 font-semibold text-right">App → Interview</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-hairline">
+                <tr class="row-hover"><td class="px-5 py-3 font-medium"><span class="dot mr-2" style="background:#2F5BFF"></span>Applied</td><td class="px-4 py-3 text-right">41</td><td class="px-4 py-3 text-right">22</td><td class="px-4 py-3 text-right">8</td><td class="px-4 py-3 text-right">1</td><td class="px-4 py-3 text-right">0</td><td class="px-4 py-3 text-right font-semibold">19.5%</td></tr>
+                <tr class="row-hover"><td class="px-5 py-3 font-medium"><span class="dot mr-2" style="background:#8B4DE8"></span>Cold email</td><td class="px-4 py-3 text-right">12</td><td class="px-4 py-3 text-right">7</td><td class="px-4 py-3 text-right">4</td><td class="px-4 py-3 text-right">1</td><td class="px-4 py-3 text-right">0</td><td class="px-4 py-3 text-right font-semibold">33.3%</td></tr>
+                <tr class="row-hover"><td class="px-5 py-3 font-medium"><span class="dot mr-2" style="background:#16A34A"></span>Referral</td><td class="px-4 py-3 text-right">9</td><td class="px-4 py-3 text-right">6</td><td class="px-4 py-3 text-right">5</td><td class="px-4 py-3 text-right">0</td><td class="px-4 py-3 text-right">0</td><td class="px-4 py-3 text-right font-semibold text-green-700">55.6%</td></tr>
+                <tr class="row-hover"><td class="px-5 py-3 font-medium"><span class="dot mr-2" style="background:#0A66C2"></span>LinkedIn</td><td class="px-4 py-3 text-right">21</td><td class="px-4 py-3 text-right">8</td><td class="px-4 py-3 text-right">3</td><td class="px-4 py-3 text-right">0</td><td class="px-4 py-3 text-right">0</td><td class="px-4 py-3 text-right font-semibold">14.3%</td></tr>
+                <tr class="row-hover"><td class="px-5 py-3 font-medium"><span class="dot mr-2" style="background:#003A9B"></span>Indeed</td><td class="px-4 py-3 text-right">4</td><td class="px-4 py-3 text-right">1</td><td class="px-4 py-3 text-right">0</td><td class="px-4 py-3 text-right">0</td><td class="px-4 py-3 text-right">0</td><td class="px-4 py-3 text-right font-semibold text-ink-3">0.0%</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Role activity (7d) -->
+        <div class="bg-white border border-hairline rounded-lg2 shadow-card">
+          <div class="px-5 py-4 border-b border-hairline">
+            <div class="font-semibold text-[15px]">Last 7 days</div>
+            <div class="text-[12px] text-ink-3">New applications per day, and stage entrances per day</div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 p-5">
+            <div>
+              <div class="text-[12px] font-semibold text-ink-2 mb-2">New applications</div>
+              <div class="relative h-[170px]"><canvas id="roleApps7"></canvas></div>
+            </div>
+            <div>
+              <div class="text-[12px] font-semibold text-ink-2 mb-2">Stage entrances</div>
+              <div class="relative h-[170px]"><canvas id="roleStage7"></canvas></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="space-y-4">
+        <div class="bg-white border border-hairline rounded-lg2 p-5 shadow-card">
+          <div class="text-[11px] uppercase tracking-wider text-ink-3 font-semibold mb-3">Role meta</div>
+          <dl class="space-y-3 text-[13px]">
+            <div class="flex justify-between gap-3"><dt class="text-ink-3">Opened</dt><dd class="font-medium">42 days ago</dd></div>
+            <div class="flex justify-between gap-3"><dt class="text-ink-3">Hiring manager</dt><dd class="font-medium">Ravi T.</dd></div>
+            <div class="flex justify-between gap-3"><dt class="text-ink-3">Recruiter</dt><dd class="font-medium">Meera B.</dd></div>
+            <div class="flex justify-between gap-3"><dt class="text-ink-3">Location</dt><dd class="font-medium">Bengaluru</dd></div>
+            <div class="flex justify-between gap-3"><dt class="text-ink-3">Workplace</dt><dd class="font-medium">Hybrid</dd></div>
+            <div class="flex justify-between gap-3"><dt class="text-ink-3">Comp band</dt><dd class="font-medium tnum">₹45-65 L</dd></div>
+            <div class="flex justify-between gap-3"><dt class="text-ink-3">Posting</dt><dd><a href="#" class="font-medium text-sv-blue hover:underline">View ↗</a></dd></div>
+          </dl>
+        </div>
+
+        <div class="rounded-lg2 p-5 sv-gradient text-white shadow-float">
+          <div class="text-[11px] uppercase tracking-wider opacity-80 font-semibold">Status</div>
+          <div class="font-display text-xl font-bold mt-1">On track</div>
+          <div class="text-[12px] opacity-90 mt-1">Funnel velocity is healthy. Watch Round 2 median (7.4 days, above 7d SLA).</div>
+        </div>
+
+        <div class="bg-white border border-hairline rounded-lg2 p-5 shadow-card">
+          <div class="text-[11px] uppercase tracking-wider text-ink-3 font-semibold mb-2">Conversion (trailing)</div>
+          <div class="space-y-2 text-[12px]">
+            <div class="flex justify-between"><span class="text-ink-3">App → Review pass</span><span class="font-semibold tnum">42%</span></div>
+            <div class="flex justify-between"><span class="text-ink-3">Review → R1</span><span class="font-semibold tnum">39%</span></div>
+            <div class="flex justify-between"><span class="text-ink-3">R1 → R2</span><span class="font-semibold tnum">53%</span></div>
+            <div class="flex justify-between"><span class="text-ink-3">Final → Offer</span><span class="font-semibold tnum">67%</span></div>
+            <div class="flex justify-between"><span class="text-ink-3">Offer → Hired</span><span class="font-semibold tnum">50%</span></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<footer class="mt-8 border-t border-hairline">
+  <div class="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 flex items-center justify-between text-[12px] text-ink-3 flex-wrap gap-2">
+    <div>Sarvam Hiring · Mockup v0.2 · data shown is synthetic</div>
+    <div class="flex items-center gap-3">
+      <span class="flex items-center gap-1.5"><span class="dot bg-stage-hired"></span>cache fresh</span>
+      <span>commit 0xMOCK</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* ============== MOCK DATA ============== */
+// Each role has: applied (all-time), rev, r1, r2, r3, r4, final, offer (current active), hired, arch
+const ROLES = [
+  { id:'j1',  title:'Senior Backend Engineer',       dept:'Engineering', hm:'Ravi T.',      days:42, applied:87,  rev:11, r1:5, r2:3, r3:1, r4:1, final:2, offer:2, hired:0, arch:55, trend:[3,4,3,5,7,6,4,3,2,4,6,7,5,4] },
+  { id:'j2',  title:'Product Designer',              dept:'Design',      hm:'Vaibhav V.',   days:14, applied:143, rev:18, r1:9, r2:7, r3:3, r4:2, final:2, offer:0, hired:0, arch:86, trend:[8,10,7,12,14,11,9,8,10,15,13,11,10,12] },
+  { id:'j3',  title:'Forward Deployed Engineer',     dept:'Engineering', hm:'Viru N.',      days:95, applied:211, rev:6,  r1:4, r2:3, r3:2, r4:1, final:1, offer:1, hired:1, arch:192,trend:[2,3,1,2,3,2,2,1,2,1,2,3,1,2] },
+  { id:'j4',  title:'Applied Scientist',             dept:'Research',    hm:'Pratyush K.',  days:7,  applied:22,  rev:18, r1:3, r2:1, r3:0, r4:0, final:0, offer:0, hired:0, arch:0,  trend:[0,0,1,3,5,6,7] },
+  { id:'j5',  title:'ML Infra Engineer',             dept:'Engineering', hm:'Ravi T.',      days:28, applied:64,  rev:9,  r1:4, r2:3, r3:1, r4:1, final:0, offer:1, hired:0, arch:44, trend:[2,3,4,5,3,2,3,4,5,4,3,2,3,4] },
+  { id:'j6',  title:'Solutions Architect',           dept:'GTM',         hm:'Kavya R.',     days:19, applied:38,  rev:6,  r1:3, r2:2, r3:1, r4:1, final:1, offer:0, hired:0, arch:24, trend:[1,2,2,3,2,1,2,3,2,2,3,2,1,2] },
+  { id:'j7',  title:'Voice AI Researcher',           dept:'Research',    hm:'Pratyush K.',  days:56, applied:45,  rev:3,  r1:2, r2:1, r3:1, r4:1, final:0, offer:1, hired:0, arch:35, trend:[1,0,1,1,2,1,0,1,1,2,1,0,1,1] },
+  { id:'j8',  title:'DevRel Engineer',               dept:'Engineering', hm:'Aman S.',      days:33, applied:71,  rev:8,  r1:3, r2:2, r3:2, r4:1, final:1, offer:0, hired:0, arch:54, trend:[3,4,5,3,2,4,5,4,3,2,3,4,5,3] },
+  { id:'j9',  title:'Enterprise Account Exec',       dept:'GTM',         hm:'Kavya R.',     days:48, applied:52,  rev:5,  r1:2, r2:2, r3:1, r4:1, final:0, offer:1, hired:1, arch:38, trend:[2,1,3,2,4,3,2,1,2,3,2,1,2,3] },
+  { id:'j10', title:'Security Engineer',             dept:'Engineering', hm:'Ravi T.',      days:22, applied:31,  rev:5,  r1:2, r2:2, r3:1, r4:1, final:0, offer:0, hired:0, arch:20, trend:[1,1,2,1,2,1,2,3,2,1,2,1,2,1] },
+  { id:'j11', title:'Brand Designer',                dept:'Design',      hm:'Vaibhav V.',   days:11, applied:26,  rev:5,  r1:2, r2:1, r3:1, r4:0, final:0, offer:0, hired:0, arch:17, trend:[0,1,2,1,3,2,1,2,3,2,1,0,1,2] },
+  { id:'j12', title:'Data Engineer',                 dept:'Engineering', hm:'Aman S.',      days:63, applied:89,  rev:6,  r1:3, r2:2, r3:1, r4:1, final:1, offer:0, hired:0, arch:75, trend:[2,3,2,3,4,3,2,1,2,3,2,3,2,1] },
+  { id:'j13', title:'GTM Ops Lead',                  dept:'GTM',         hm:'Kavya R.',     days:17, applied:19,  rev:3,  r1:1, r2:1, r3:1, r4:1, final:0, offer:0, hired:0, arch:12, trend:[0,1,2,1,0,1,2,3,2,1,0,1,2,1] },
+  { id:'j14', title:'Speech Researcher',             dept:'Research',    hm:'Pratyush K.',  days:74, applied:61,  rev:5,  r1:3, r2:2, r3:1, r4:0, final:0, offer:1, hired:0, arch:50, trend:[1,2,1,1,2,1,0,1,2,1,2,1,1,2] },
+];
+
+function live(r){ return r.rev + r.r1 + r.r2 + r.r3 + r.r4 + r.final + r.offer; }
+function interview(r){ return r.r1 + r.r2 + r.r3 + r.r4 + r.final; }
+
+/* ============== MATRIX RENDER ============== */
+function cellClass(n, stage) {
+  if (stage === 'offer') {
+    if (n === 0) return 'cell-0';
+    return n >= 2 ? 'cell-offer-2' : 'cell-offer-1';
+  }
+  if (stage === 'hired' && n > 0) return 'cell-hired';
+  if (n === 0) return 'cell-0';
+  if (n <= 2) return 'cell-1';
+  if (n <= 4) return 'cell-2';
+  if (n <= 7) return 'cell-3';
+  if (n <= 12) return 'cell-4';
+  return 'cell-5';
+}
+
+function renderMatrix() {
+  const tbody = document.getElementById('matrixTbody');
+  const totalsRow = document.getElementById('matrixTotalsRow');
+
+  tbody.innerHTML = ROLES.map(r => {
+    const cell = (n, s='int') => `<td class="px-3 py-3 text-right ${cellClass(n, s)}">${n || '<span class="text-ink-3/50">·</span>'}</td>`;
+    return `
+      <tr class="sticky-col-hover cursor-pointer" onclick="showTab('role')">
+        <td class="px-4 py-3 sticky-col sticky-col-hover">
+          <div class="font-medium">${r.title}</div>
+          <div class="text-[11px] text-ink-3 mt-0.5">${r.dept} · ${r.hm} · <span class="${r.days >= 60 ? 'text-sv-orangeInk font-semibold' : ''}">${r.days}d open</span></div>
+        </td>
+        <td class="px-3 py-3 text-right text-ink-3">${r.applied}</td>
+        ${cell(r.rev)}${cell(r.r1)}${cell(r.r2)}${cell(r.r3)}${cell(r.r4)}${cell(r.final)}
+        ${cell(r.offer, 'offer')}
+        ${cell(r.hired, 'hired')}
+        <td class="px-3 py-3 text-right text-ink-3">${r.arch}</td>
+        <td class="px-3 py-3 text-right font-semibold">${live(r)}</td>
+      </tr>
+    `;
+  }).join('');
+
+  /* Topline totals row — the answer first, above the per-role table */
+  const sum = k => ROLES.reduce((a,r)=>a + (typeof k === 'function' ? k(r) : r[k]), 0);
+  const tot = {
+    applied: sum('applied'), rev: sum('rev'), r1: sum('r1'), r2: sum('r2'),
+    r3: sum('r3'), r4: sum('r4'), final: sum('final'), offer: sum('offer'),
+    hired: sum('hired'), arch: sum('arch'), live: sum(live),
+  };
+  const bigCell = (label, value, opts = {}) => `
+    <td class="px-3 sm:px-4 py-3 text-center ${opts.bg || ''} ${opts.border ? 'border-l border-hairline' : ''}">
+      <div class="text-[10px] uppercase tracking-wider text-ink-3 font-semibold">${label}</div>
+      <div class="font-display text-2xl sm:text-[26px] font-extrabold tnum mt-0.5 ${opts.color || 'text-ink'} leading-none">${value.toLocaleString()}</div>
+    </td>
+  `;
+  totalsRow.innerHTML = `
+    <td class="px-4 sm:px-5 py-3 sticky-col min-w-[180px]">
+      <div class="text-[11px] uppercase tracking-wider text-ink-3 font-semibold">Across 14 roles</div>
+      <div class="font-display text-2xl sm:text-[26px] font-extrabold tnum leading-none mt-0.5 sv-gradient-text">${tot.applied.toLocaleString()}</div>
+      <div class="text-[11px] text-ink-3 mt-0.5">total applied</div>
+    </td>
+    ${bigCell('Review', tot.rev, { bg: 'bg-sv-blue/5', border: true })}
+    ${bigCell('R1', tot.r1, { bg: 'bg-sv-blue/5' })}
+    ${bigCell('R2', tot.r2, { bg: 'bg-sv-blue/5' })}
+    ${bigCell('R3', tot.r3, { bg: 'bg-sv-blue/5' })}
+    ${bigCell('R4', tot.r4, { bg: 'bg-sv-blue/5' })}
+    ${bigCell('Final', tot.final, { bg: 'bg-sv-blue/5' })}
+    ${bigCell('Offer', tot.offer, { bg: 'bg-sv-orange/10', color: 'text-sv-orangeInk', border: true })}
+    ${bigCell('Hired', tot.hired, { bg: 'bg-green-50', color: 'text-green-700' })}
+    ${bigCell('Archived', tot.arch, { color: 'text-ink-3', border: true })}
+    ${bigCell('Live', tot.live, { bg: 'bg-paper-2' })}
+  `;
+}
+
+/* ============== ROLES TABLE ============== */
+function sparkline(points, { w=80, h=24 } = {}) {
+  const max = Math.max(...points, 1);
+  const step = points.length > 1 ? w / (points.length - 1) : 0;
+  const coords = points.map((v,i) => `${(i*step).toFixed(1)},${(h - (v/max)*h*0.9 - 2).toFixed(1)}`).join(' ');
+  const last = points[points.length-1];
+  const lastX = ((points.length-1)*step).toFixed(1);
+  const lastY = (h - (last/max)*h*0.9 - 2).toFixed(1);
+  const rising = points[points.length-1] >= points[Math.floor(points.length/2)];
+  const stroke = rising ? '#16A34A' : '#FF6A1A';
+  return `
+    <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" fill="none" class="inline-block">
+      <polyline points="${coords}" stroke="${stroke}" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${lastX}" cy="${lastY}" r="2" fill="${stroke}"/>
+    </svg>
+  `;
+}
+
+function renderRoles() {
+  const tbody = document.getElementById('rolesTbody');
+  tbody.innerHTML = ROLES.map((r, i) => `
+    <tr class="row-hover cursor-pointer" onclick="showTab('role')">
+      <td class="px-4 py-3 text-ink-3">${String(i+1).padStart(2,'0')}</td>
+      <td class="px-4 py-3 font-medium">${r.title}</td>
+      <td class="px-4 py-3"><span class="pill bg-paper-2 border border-hairline text-ink-2">${r.dept}</span></td>
+      <td class="px-4 py-3 text-ink-3">${r.hm}</td>
+      <td class="px-4 py-3 text-right ${r.days >= 60 ? 'text-sv-orangeInk font-semibold' : ''}">${r.days}${r.days >= 60 ? ' ⚠' : ''}</td>
+      <td class="px-4 py-3 text-right">${r.applied}</td>
+      <td class="px-4 py-3 text-right font-semibold">${live(r)}</td>
+      <td class="px-4 py-3 text-right">${interview(r)}</td>
+      <td class="px-4 py-3 text-right ${r.offer > 0 ? 'text-sv-orangeInk font-semibold' : ''}">${r.offer}</td>
+      <td class="px-4 py-3 text-right ${r.hired > 0 ? 'text-green-700 font-semibold' : ''}">${r.hired}</td>
+      <td class="px-4 py-3 text-right text-ink-3">${r.arch}</td>
+      <td class="px-4 py-3">${sparkline(r.trend)}</td>
+    </tr>
+  `).join('');
+}
+
+/* ============== CHARTS ============== */
+const Chart = window.Chart;
+Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+Chart.defaults.font.size = 11;
+Chart.defaults.color = '#6B6B72';
+
+// Source donut
+new Chart(document.getElementById('sourceDonut'), {
+  type: 'doughnut',
+  data: {
+    labels: ['Applied', 'LinkedIn', 'Cold email', 'Referral', 'Indeed'],
+    datasets: [{
+      data: [347, 224, 138, 92, 55],
+      backgroundColor: ['#2F5BFF', '#0A66C2', '#8B4DE8', '#16A34A', '#003A9B'],
+      borderColor: '#FFFFFF',
+      borderWidth: 2,
+      hoverOffset: 6,
+    }],
+  },
+  options: {
+    maintainAspectRatio: false,
+    cutout: '68%',
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.parsed} (${((ctx.parsed / 856) * 100).toFixed(1)}%)` } },
+    },
+  },
+});
+
+// Applications per day, last 7 days — stacked by source, today outlined
+const DAYS_7 = ['Wed','Thu','Fri','Sat','Sun','Mon','Tue'];
+const TODAY_IDX = DAYS_7.length - 1;
+
+const stacked = (color, data) => ({
+  data, backgroundColor: color, borderRadius: 3, stack: 's',
+  borderColor: data.map((_, i) => i === TODAY_IDX ? '#0A0A0B' : color),
+  borderWidth: data.map((_, i) => i === TODAY_IDX ? 1.5 : 0),
+});
+
+new Chart(document.getElementById('inflowChart'), {
+  type: 'bar',
+  data: {
+    labels: DAYS_7,
+    datasets: [
+      { label:'Applied',  ...stacked('#2F5BFF', [18,22,12, 4, 9,24,30]) },
+      { label:'LinkedIn', ...stacked('#0A66C2', [ 8,11, 7, 2, 5,10, 9]) },
+      { label:'Cold',     ...stacked('#8B4DE8', [ 4, 6, 5, 1, 3, 6, 5]) },
+      { label:'Referral', ...stacked('#16A34A', [ 2, 3, 4, 0, 2, 3, 3]) },
+      { label:'Indeed',   ...stacked('#003A9B', [ 1, 2, 1, 0, 1, 1, 1]) },
+    ],
+  },
+  options: {
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'bottom', labels: { boxWidth: 8, boxHeight: 8, padding: 10 } },
+      tooltip: { mode: 'index', intersect: false, callbacks: {
+        footer: (items) => 'Total: ' + items.reduce((a,b)=>a+b.raw, 0),
+      } },
+    },
+    scales: {
+      x: { stacked: true, grid: { display: false } },
+      y: { stacked: true, grid: { color: '#EAEAE4' }, ticks: { stepSize: 10 } },
+    },
+  },
+});
+
+// Role detail apps + stage charts
+new Chart(document.getElementById('roleApps7'), {
+  type: 'bar',
+  data: {
+    labels: DAYS_7,
+    datasets: [
+      { label:'Applied',  data:[2,3,1,0,1,2,2], backgroundColor:'#2F5BFF', borderRadius:3, stack:'s' },
+      { label:'LinkedIn', data:[1,2,1,0,0,2,1], backgroundColor:'#0A66C2', borderRadius:3, stack:'s' },
+      { label:'Cold',     data:[0,1,0,0,0,1,1], backgroundColor:'#8B4DE8', borderRadius:3, stack:'s' },
+      { label:'Referral', data:[1,0,1,0,0,0,1], backgroundColor:'#16A34A', borderRadius:3, stack:'s' },
+    ],
+  },
+  options: {
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+    scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, grid: { color: '#EAEAE4' }, ticks: { stepSize: 2 } } },
+  },
+});
+
+new Chart(document.getElementById('roleStage7'), {
+  type: 'bar',
+  data: {
+    labels: DAYS_7,
+    datasets: [
+      { label:'R1',    data:[1,0,1,0,1,0,1], backgroundColor:'#5A7EFF', borderRadius:3 },
+      { label:'R2',    data:[0,1,0,0,0,1,0], backgroundColor:'#4F68F0', borderRadius:3 },
+      { label:'Final', data:[0,0,0,0,0,1,0], backgroundColor:'#E85BBE', borderRadius:3 },
+      { label:'Offer', data:[0,0,0,0,0,1,0], backgroundColor:'#FF6A1A', borderRadius:3 },
+    ],
+  },
+  options: {
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: { x: { grid: { display: false } }, y: { grid: { color: '#EAEAE4' }, ticks: { stepSize: 1 } } },
+  },
+});
+
+/* ============== TAB SWITCHING ============== */
+function showTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(el => el.classList.add('hidden'));
+  const panel = document.getElementById('tab-' + name);
+  if (panel) { panel.classList.remove('hidden'); panel.classList.add('fade-in'); }
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    const active = btn.dataset.tab === name;
+    btn.classList.toggle('bg-ink', active);
+    btn.classList.toggle('text-white', active);
+    btn.classList.toggle('text-ink-2', !active);
+    btn.classList.toggle('hover:bg-paper-2', !active);
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+document.querySelectorAll('.nav-btn, [data-tab]').forEach(el => {
+  el.addEventListener('click', () => { const t = el.dataset.tab; if (t) showTab(t); });
+});
+
+/* ============== REFRESH ============== */
+const refreshBtn = document.getElementById('refreshBtn');
+const refreshLabel = document.getElementById('refreshLabel');
+refreshBtn.addEventListener('click', () => {
+  let p = 0;
+  refreshBtn.disabled = true;
+  refreshLabel.textContent = 'Refreshing… 0%';
+  const id = setInterval(() => {
+    p += 8 + Math.random() * 14;
+    if (p >= 100) { p = 100; clearInterval(id); refreshLabel.textContent = '✓ Refreshed · 12,431 records · 34s'; setTimeout(()=>{ refreshLabel.textContent = 'Refresh now'; refreshBtn.disabled = false; }, 2400); return; }
+    refreshLabel.textContent = 'Refreshing… ' + Math.floor(p) + '%';
+  }, 220);
+});
+
+/* init */
+renderMatrix();
+renderRoles();
+showTab('overview');
+</script>
+
+</body>
+</html>
