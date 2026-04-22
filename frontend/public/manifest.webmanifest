@@ -1,0 +1,13 @@
+{
+  "name": "Sarvam Hiring Dashboard",
+  "short_name": "Sarvam Hiring",
+  "description": "Read-only executive analytics over the Sarvam Ashby ATS.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#0A0A0B",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

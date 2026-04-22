@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    font-feature-settings: "tnum" 1, "cv11" 1, "ss01" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  html, body, #root {
+    height: 100%;
+  }
+  /* every numeric column should render tabular */
+  .tnum, td.num, th.num { font-variant-numeric: tabular-nums; }
+}
+
+@layer components {
+  .hairline { border-color: theme("colors.hairline"); }
+  .card { @apply bg-paper border border-hairline rounded-lg shadow-card; }
+  .kpi-card { @apply relative overflow-hidden card p-4; }
+  .kpi-card::before {
+    content: "";
+    position: absolute; inset: 0 0 auto 0; height: 2px;
+    background-image: theme("backgroundImage.sarvam-gradient");
+  }
+  .chip { @apply inline-flex items-center rounded-sm px-2 py-0.5 text-caption font-medium; }
+  .chip-orange { @apply chip bg-brand-orange/10 text-brand-orange-ink; }
+  .chip-blue { @apply chip bg-brand-blue/10 text-brand-blue-ink; }
+  .chip-green { @apply chip bg-stage-hired/10 text-stage-hired; }
+  .chip-gray { @apply chip bg-ink-3/10 text-ink-2; }
+}

@@ -1,0 +1,1 @@
+{"root":["./src/main.tsx","./src/components/kpi.tsx","./src/components/refreshbutton.tsx","./src/components/shell.tsx","./src/lib/api.ts","./src/lib/format.ts","./src/pages/overview.tsx","./src/pages/people.tsx","./src/pages/roledetail.tsx","./src/pages/roles.tsx","./src/pages/settings.tsx","./src/pages/sources.tsx","./src/pages/velocity.tsx"],"version":"5.9.3"}
