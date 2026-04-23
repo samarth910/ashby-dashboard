@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "./index.css";
 import { Shell } from "@/components/Shell";
 import { Overview } from "@/pages/Overview";
+import { Pipeline } from "@/pages/Pipeline";
 import { Roles } from "@/pages/Roles";
 import { RoleDetail } from "@/pages/RoleDetail";
 import { Velocity } from "@/pages/Velocity";
@@ -30,6 +31,7 @@ createRoot(document.getElementById("root")!).render(
         <Routes>
           <Route element={<Shell />}>
             <Route index element={<Overview />} />
+            <Route path="pipeline" element={<Pipeline />} />
             <Route path="roles" element={<Roles />} />
             <Route path="roles/:jobId" element={<RoleDetail />} />
             <Route path="velocity" element={<Velocity />} />

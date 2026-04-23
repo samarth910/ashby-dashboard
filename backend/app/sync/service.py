@@ -77,6 +77,8 @@ class RefreshService:
         )
         for e in ENTITIES:
             job.entities[e.name] = EntityProgress()
+        # history is a second-phase task, not in ENTITIES — track it alongside
+        job.entities["application_history"] = EntityProgress()
         self._current = job
         self._history[job.id] = job
         self._order.append(job.id)

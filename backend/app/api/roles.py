@@ -181,6 +181,57 @@ def role_pipeline(job_id: str) -> dict:
     return envelope(grouped, last_sync_at=registry.snapshot().get("loadedAt"))
 
 
+@router.get("/api/roles/{job_id}/timeline")
+def role_timeline(job_id: str) -> dict:
+    """Per-candidate stage timelines for this role, from application_history."""
+    apps = registry.get("applications")
+    hist = registry.get("application_history")
+    if apps is None or apps.empty or hist is None or hist.empty:
+        return envelope({"candidates": []}, last_sync_at=registry.snapshot().get("loadedAt"))
+
+    role_apps = apps.loc[_col(apps, "job.id").astype(str) == job_id]
+    if role_apps.empty:
+        return envelope({"candidates": []}, last_sync_at=registry.snapshot().get("loadedAt"))
+
+    app_to_meta = {
+        str(r["id"]): {
+            "application_id": str(r["id"]),
+            "candidate_id": str(r.get("candidate.id")),
+            "candidate_name": str(r.get("candidate.name")),
+            "current_stage": str(r.get("currentInterviewStage.title")),
+            "status": str(r.get("status")),
+        }
+        for _, r in role_apps.iterrows()
+    }
+    app_ids = set(app_to_meta.keys())
+    sub = hist[hist["application_id"].astype(str).isin(app_ids)].copy()
+    if sub.empty:
+        return envelope({"candidates": []}, last_sync_at=registry.snapshot().get("loadedAt"))
+
+    sub["entered_at"] = pd.to_datetime(sub["entered_at"], utc=True, errors="coerce")
+    sub["left_at"] = pd.to_datetime(sub["left_at"], utc=True, errors="coerce")
+    sub = sub.sort_values(["application_id", "stage_number", "entered_at"])
+
+    candidates = []
+    for aid, group in sub.groupby("application_id"):
+        meta = app_to_meta.get(str(aid), {})
+        stages = []
+        for _, r in group.iterrows():
+            stages.append({
+                "stage": str(r.get("stage_title")),
+                "stage_number": int(r["stage_number"]) if pd.notna(r.get("stage_number")) else None,
+                "entered_at": r["entered_at"].isoformat() if pd.notna(r["entered_at"]) else None,
+                "left_at": r["left_at"].isoformat() if pd.notna(r["left_at"]) else None,
+                "duration_days": round(r["duration_seconds"] / 86400, 1) if pd.notna(r.get("duration_seconds")) else None,
+                "is_current": bool(r.get("is_current")),
+            })
+        candidates.append({**meta, "stages": stages})
+
+    # sort: currently-active first, then by current stage number desc
+    candidates.sort(key=lambda c: (c["status"] != "Active", -len(c["stages"])))
+    return envelope({"candidates": candidates}, last_sync_at=registry.snapshot().get("loadedAt"))
+
+
 @router.get("/api/roles/{job_id}/activity")
 def role_activity(job_id: str, days: int = 7) -> dict:
     apps = registry.get("applications")

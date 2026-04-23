@@ -12,6 +12,7 @@ import pandas as pd
 from fastapi import APIRouter
 
 from app.api._common import envelope, to_records
+from app.api.pipeline import _rounds_summary
 from app.cache.registry import registry
 
 router = APIRouter()
@@ -143,6 +144,9 @@ def overview() -> dict[str, Any]:
             frame = frame.dropna(subset=["days_since_update"]).sort_values("days_since_update", ascending=False).head(5)
             stuck = to_records(frame)
 
+    # ----- Per-round breakdown (listed+open scope) -----
+    rounds = _rounds_summary(registry.derived("stage_current_residents"))
+
     loaded_at = registry.snapshot().get("loadedAt")
     return envelope(
         {
@@ -158,6 +162,7 @@ def overview() -> dict[str, Any]:
             "conversionFunnel": funnel,
             "rolesSummary": roles_summary,
             "roles": roles_rows,
+            "rounds": rounds,
             "applicationsPerDay30d": apps_per_day,
             "stuckCandidates": stuck,
         },

@@ -52,6 +52,17 @@ export const api = {
   velocity: () => get<VelocityData>("/api/velocity"),
   sources: () => get<SourcesData>("/api/sources"),
   people: () => get<PersonLoad[]>("/api/people"),
+  pipeline: (q: { stage?: string; job_id?: string; hiring_manager?: string; scope?: "listed_open" | "all"; min_days?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (q.stage) qs.set("stage", q.stage);
+    if (q.job_id) qs.set("job_id", q.job_id);
+    if (q.hiring_manager) qs.set("hiring_manager", q.hiring_manager);
+    if (q.scope) qs.set("scope", q.scope);
+    if (q.min_days && q.min_days > 0) qs.set("min_days", String(q.min_days));
+    const s = qs.toString();
+    return get<PipelineResponse>(`/api/pipeline${s ? "?" + s : ""}`);
+  },
+  roleTimeline: (jobId: string) => get<RoleTimeline>(`/api/roles/${jobId}/timeline`),
   refreshStart: (full = false) =>
     post<{ jobId: string; status: string; kind: string }>(`/api/refresh${full ? "?full=true" : ""}`),
   refreshStatus: (jobId: string) => fetch(`/api/refresh/${jobId}`).then((r) => r.json()) as Promise<RefreshJob>,
@@ -76,6 +87,15 @@ export type RoleRow = {
   rejected: number;
 };
 
+export type RoundBreakdown = {
+  stage: string;
+  count: number;
+  median_days: number | null;
+  p90_days: number | null;
+  stuck_count: number;
+  sla_days: number | null;
+};
+
 export type Overview = {
   kpis: {
     openRoles: number;
@@ -89,6 +109,7 @@ export type Overview = {
   conversionFunnel: FunnelBuckets;
   rolesSummary: FunnelBuckets & { total_roles: number };
   roles: RoleRow[];
+  rounds: RoundBreakdown[];
   applicationsPerDay30d: { date: string; source: string; count: number }[];
   stuckCandidates: {
     application_id: string;
@@ -98,6 +119,48 @@ export type Overview = {
     job_title: string;
     stage: string;
     days_since_update: number;
+  }[];
+};
+
+export type PipelineResident = {
+  application_id: string;
+  candidate_id: string;
+  candidate_name: string;
+  job_id: string;
+  job_title: string;
+  department: string | null;
+  location: string | null;
+  hiring_manager: string | null;
+  source_title: string;
+  stage_title: string;
+  stage_type: string;
+  stage_number: number | null;
+  entered_stage_at: string | null;
+  days_in_stage: number | null;
+  is_listed_open: boolean;
+  sla_breach: boolean;
+};
+
+export type PipelineResponse = {
+  residents: PipelineResident[];
+  rounds: RoundBreakdown[];
+};
+
+export type RoleTimeline = {
+  candidates: {
+    application_id: string;
+    candidate_id: string;
+    candidate_name: string;
+    current_stage: string;
+    status: string;
+    stages: {
+      stage: string;
+      stage_number: number | null;
+      entered_at: string | null;
+      left_at: string | null;
+      duration_days: number | null;
+      is_current: boolean;
+    }[];
   }[];
 };
 

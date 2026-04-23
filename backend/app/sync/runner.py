@@ -24,6 +24,7 @@ import pandas as pd
 
 from app.ashby.client import AshbyClient, AshbyError, AshbyTokenExpired
 from app.ashby.entities import ENTITIES, Entity
+from app.ashby.history import apps_needing_history, fan_out_history, merge_history
 from app.ashby.paginator import fetch_all
 from app.cache import store
 
@@ -46,6 +47,95 @@ def _merge_incremental(existing: pd.DataFrame, new: pd.DataFrame, pk: str | None
         return pd.concat([existing, new], ignore_index=True)
     keep = existing[~existing[pk].isin(new[pk])]
     return pd.concat([keep, new], ignore_index=True)
+
+
+async def _sync_application_history(
+    client: AshbyClient,
+    base_results: list[Any],
+    on_entity_event: ProgressCallback | None,
+    *,
+    force_full: bool,
+) -> dict[str, Any] | None:
+    """Fan out application.listHistory for every changed application.
+
+    Depends on the applications parquet being freshly written by the base pass.
+    Failure here is isolated: we log, surface in sync_state, and move on.
+    """
+    name = "application_history"
+    start = time.perf_counter()
+    if on_entity_event:
+        on_entity_event(name, "started", {})
+
+    # locate applications result in the base pass; skip if it failed
+    apps_idx = next((i for i, e in enumerate(ENTITIES) if e.name == "applications"), None)
+    if apps_idx is None or isinstance(base_results[apps_idx], Exception):
+        payload = {
+            "lastError": "applications pass failed; skipping history",
+            "durationSec": 0.0,
+        }
+        if on_entity_event:
+            on_entity_event(name, "completed", payload)
+        return payload
+
+    applications = store.load_entity("applications") or pd.DataFrame()
+    existing = None if force_full else store.load_entity("application_history")
+
+    todo = apps_needing_history(applications, existing)
+    total_apps = int(len(applications)) if not applications.empty else 0
+    if not todo:
+        logger.info("application_history: nothing to fetch (all %d apps up-to-date)", total_apps)
+        payload = {
+            "rowCount": 0 if existing is None else int(len(existing)),
+            "fetchedThisRun": 0,
+            "durationSec": round(time.perf_counter() - start, 2),
+            "lastIncrementalSync": _now_iso(),
+            "lastRunKind": "incremental-noop",
+        }
+        if on_entity_event:
+            on_entity_event(name, "completed", payload)
+        return payload
+
+    logger.info(
+        "application_history: fan-out starting (%d of %d apps need refresh)",
+        len(todo), total_apps,
+    )
+
+    def _progress(done: int, total: int, failed: int) -> None:
+        logger.info("application_history: %d/%d fetched (%d failed)", done, total, failed)
+
+    try:
+        fresh = await fan_out_history(client, todo, on_progress=_progress)
+    except Exception as exc:
+        logger.exception("application_history fan-out crashed")
+        payload = {
+            "lastError": f"{type(exc).__name__}: {exc}",
+            "durationSec": round(time.perf_counter() - start, 2),
+        }
+        if on_entity_event:
+            on_entity_event(name, "failed", payload)
+        return payload
+
+    merged = merge_history(existing, fresh, refetched_ids=todo)
+    store.write_entity(name, merged)
+
+    duration = round(time.perf_counter() - start, 2)
+    now = _now_iso()
+    kind = "full" if existing is None or force_full else "incremental"
+    logger.info("application_history: %s - merged %d rows in %.1fs", kind, len(merged), duration)
+    payload = {
+        "supportsSyncToken": False,
+        "syncToken": None,
+        "lastFullSync": now if kind == "full" else None,
+        "lastIncrementalSync": now if kind == "incremental" else None,
+        "lastError": None,
+        "rowCount": int(len(merged)),
+        "fetchedThisRun": int(len(todo)),
+        "durationSec": duration,
+        "lastRunKind": kind,
+    }
+    if on_entity_event:
+        on_entity_event(name, "completed", payload)
+    return payload
 
 
 async def sync_entity(
@@ -137,6 +227,13 @@ async def run_sync(
             tasks.append(_wrap(e, saved_token))
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
+        # Phase 2: application history. application.listHistory is gated behind
+        # applicationId so we fan out. Incremental by default — full re-fetch only
+        # for apps whose updatedAt moved past the cached history.
+        history_result = await _sync_application_history(
+            client, results, on_entity_event, force_full=full
+        )
+
     new_entities: dict[str, Any] = dict(prev_entities)
     for entity, result in zip(ENTITIES, results):
         prev = new_entities.get(entity.name, {})
@@ -151,6 +248,14 @@ async def run_sync(
             if v is not None or k not in prev:
                 prev[k] = v
         new_entities[entity.name] = prev
+
+    # Fold history-phase result into the same sync_state shape
+    if history_result is not None:
+        prev = new_entities.get("application_history", {})
+        for k, v in history_result.items():
+            if v is not None or k not in prev:
+                prev[k] = v
+        new_entities["application_history"] = prev
 
     new_state = {
         "version": 1,

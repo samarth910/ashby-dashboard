@@ -1,10 +1,11 @@
 import { NavLink, Outlet, Link } from "react-router-dom";
-import { LayoutDashboard, Briefcase, Activity, Radio, Users, Settings } from "lucide-react";
+import { LayoutDashboard, Briefcase, Activity, Radio, Users, Settings, ListOrdered } from "lucide-react";
 import { RefreshButton } from "./RefreshButton";
 import type { ReactNode } from "react";
 
 const nav = [
   { to: "/", label: "Overview", icon: LayoutDashboard, end: true },
+  { to: "/pipeline", label: "Pipeline", icon: ListOrdered, end: false },
   { to: "/roles", label: "Roles", icon: Briefcase, end: false },
   { to: "/velocity", label: "Velocity", icon: Activity, end: false },
   { to: "/sources", label: "Sources", icon: Radio, end: false },

@@ -4,6 +4,7 @@ import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAx
 import { AlertTriangle, ArrowRight } from "lucide-react";
 import { api, type FunnelBuckets, type RoleRow } from "@/lib/api";
 import { KPI } from "@/components/KPI";
+import { RoundsStrip } from "@/components/RoundsStrip";
 import { fmtInt, fmtPct, fmtDelta } from "@/lib/format";
 
 export function Overview() {
@@ -67,6 +68,9 @@ export function Overview() {
 
       {/* Conversion funnel */}
       <ConversionFunnelCard funnel={d.conversionFunnel} />
+
+      {/* Per-round breakdown */}
+      <RoundsStrip rounds={d.rounds} />
 
       {/* Roles table */}
       <RolesCard

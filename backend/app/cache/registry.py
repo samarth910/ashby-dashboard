@@ -57,6 +57,10 @@ class Registry:
             df = store.load_entity(e.name)
             if df is not None:
                 new_entities[e.name] = df
+        # application_history is a 2nd-phase entity (fan-out), not in ENTITIES
+        hist = store.load_entity("application_history")
+        if hist is not None:
+            new_entities["application_history"] = hist
 
         try:
             new_derived = compute_derived(new_entities)

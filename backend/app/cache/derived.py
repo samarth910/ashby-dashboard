@@ -159,14 +159,22 @@ def _counts_by_job(apps: pd.DataFrame) -> pd.DataFrame:
 
 
 def compute_stage_movement_daily(entities: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """Without application_history, we approximate: new applications per day x stage bucket.
+    """Real stage-entry counts per day over the last 90 days, from
+    application_history.entered_at. Falls back to createdAt proxy if history
+    is not yet cached."""
+    hist = entities.get("application_history", pd.DataFrame())
+    if not hist.empty and "entered_at" in hist.columns and "stage_title" in hist.columns:
+        entered = _ts(hist["entered_at"])
+        df = pd.DataFrame({"date": entered.dt.date, "stage": hist["stage_title"].astype(str)}).dropna()
+        cutoff = (_now() - pd.Timedelta(days=90)).date()
+        df = df[df["date"] >= cutoff]
+        return (
+            df.groupby(["date", "stage"], as_index=False).size().rename(columns={"size": "entered_count"})
+        )
 
-    Columns: date, stage, entered_count.
-    """
     apps = entities.get("applications", pd.DataFrame())
     if apps.empty or "createdAt" not in apps.columns:
         return pd.DataFrame(columns=["date", "stage", "entered_count"])
-
     created = _ts(apps["createdAt"])
     stage = _col(apps, "currentInterviewStage.title").astype(str)
     df = pd.DataFrame({"date": created.dt.date, "stage": stage}).dropna()
@@ -177,6 +185,96 @@ def compute_stage_movement_daily(entities: dict[str, pd.DataFrame]) -> pd.DataFr
         .size()
         .rename(columns={"size": "entered_count"})
     )
+
+
+def compute_stage_current_residents(entities: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """One row per currently-active application, with the stage they are in
+    NOW and the exact timestamp they entered it (from history when available).
+
+    This is the table every rounds view reads from. Columns:
+      application_id, candidate_id, candidate_name, job_id, job_title,
+      department, location, hiring_manager, source_title,
+      stage_title, stage_type, stage_number,
+      entered_stage_at, days_in_stage, is_listed_open
+    """
+    apps = entities.get("applications", pd.DataFrame())
+    hist = entities.get("application_history", pd.DataFrame())
+    role_summary = entities.get("role_summary", pd.DataFrame())  # optional, for is_listed_open + hm
+
+    cols = [
+        "application_id", "candidate_id", "candidate_name", "job_id", "job_title",
+        "department", "location", "hiring_manager", "source_title",
+        "stage_title", "stage_type", "stage_number",
+        "entered_stage_at", "days_in_stage", "is_listed_open",
+    ]
+    if apps.empty:
+        return pd.DataFrame(columns=cols)
+
+    status = _col(apps, "status").astype(str)
+    active = apps[~status.isin(["Archived", "Hired"])].copy()
+    if active.empty:
+        return pd.DataFrame(columns=cols)
+
+    # resolve entered_at from history (is_current==True row per application)
+    entered_map: dict[str, tuple[Any, Any]] = {}  # app_id -> (entered_at, stage_number)
+    if not hist.empty and {"application_id", "is_current", "entered_at"}.issubset(hist.columns):
+        cur = hist[hist["is_current"].astype(bool) == True].copy()
+        if not cur.empty:
+            cur["entered_at_ts"] = _ts(cur["entered_at"])
+            # if multiple current rows, pick latest
+            cur = cur.sort_values("entered_at_ts").drop_duplicates("application_id", keep="last")
+            for _, r in cur.iterrows():
+                entered_map[str(r["application_id"])] = (r["entered_at_ts"], r.get("stage_number"))
+
+    app_id = active["id"].astype(str)
+    entered_values = app_id.map(lambda a: entered_map.get(a, (pd.NaT, None))[0])
+    stage_number = app_id.map(lambda a: entered_map.get(a, (pd.NaT, None))[1])
+    entered = pd.to_datetime(
+        pd.Series(entered_values.values, index=active.index), utc=True, errors="coerce"
+    )
+    # fallback: use applications.updatedAt as proxy when history missing for this app
+    if "updatedAt" in active.columns:
+        fallback = _ts(active["updatedAt"])
+        entered = entered.fillna(fallback)
+    days = ((_now() - entered).dt.total_seconds() / 86400).round(1)
+
+    listed_open_map: dict[str, bool] = {}
+    hiring_manager_map: dict[str, str] = {}
+    department_map: dict[str, str] = {}
+    location_map: dict[str, str] = {}
+    if role_summary is not None and not role_summary.empty:
+        for _, r in role_summary.iterrows():
+            jid = str(r.get("job_id"))
+            listed_open_map[jid] = bool(r.get("is_listed_open", False))
+            hiring_manager_map[jid] = r.get("hiring_manager")
+            department_map[jid] = r.get("department")
+            location_map[jid] = r.get("location")
+
+    jobs = entities.get("jobs", pd.DataFrame())
+    if not hiring_manager_map and not jobs.empty and "hiringTeam" in jobs.columns:
+        for _, r in jobs.iterrows():
+            jid = str(r["id"])
+            hiring_manager_map[jid] = _extract_hiring_team_role(r.get("hiringTeam"), "Hiring Manager")
+
+    job_id = _col(active, "job.id").astype(str)
+    out = pd.DataFrame({
+        "application_id": app_id.values,
+        "candidate_id": _col(active, "candidate.id").astype(str).values,
+        "candidate_name": _col(active, "candidate.name").astype(str).values,
+        "job_id": job_id.values,
+        "job_title": _col(active, "job.title").astype(str).values,
+        "department": job_id.map(department_map).values,
+        "location": job_id.map(location_map).values,
+        "hiring_manager": job_id.map(hiring_manager_map).values,
+        "source_title": _col(active, "source.title").astype(str).values,
+        "stage_title": _col(active, "currentInterviewStage.title").astype(str).values,
+        "stage_type": _col(active, "currentInterviewStage.type").astype(str).values,
+        "stage_number": stage_number.values,
+        "entered_stage_at": entered.values,
+        "days_in_stage": days.values,
+        "is_listed_open": job_id.map(listed_open_map).fillna(False).astype(bool).values,
+    })
+    return out
 
 
 def compute_source_performance(entities: dict[str, pd.DataFrame]) -> pd.DataFrame:
@@ -221,8 +319,13 @@ def compute_source_performance(entities: dict[str, pd.DataFrame]) -> pd.DataFram
 
 
 def compute_all(entities: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
+    role_summary = compute_role_summary(entities)
+    # stage_current_residents wants role_summary for hm / is_listed_open joins
+    ents_with_rs = dict(entities)
+    ents_with_rs["role_summary"] = role_summary
     return {
-        "role_summary": compute_role_summary(entities),
+        "role_summary": role_summary,
         "stage_movement_daily": compute_stage_movement_daily(entities),
         "source_performance": compute_source_performance(entities),
+        "stage_current_residents": compute_stage_current_residents(ents_with_rs),
     }
