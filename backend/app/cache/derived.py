@@ -113,10 +113,13 @@ def compute_role_summary(entities: dict[str, pd.DataFrame]) -> pd.DataFrame:
     opened = _ts(_col(j, "openedAt")).fillna(_ts(_col(j, "createdAt")))
     j["days_open"] = ((_now() - opened).dt.total_seconds() / 86400).round().astype("Int64")
 
-    # five funnel buckets per job
+    # funnel buckets + per-round split per job
     counts = _counts_by_job(apps)
     j = j.merge(counts, how="left", on="job_id")
-    for c in ["applied", "live", "in_interview", "offer", "rejected", "hired"]:
+    for c in [
+        "applied", "live", "in_interview", "offer", "rejected", "hired",
+        "round_1", "round_2", "round_3", "round_4", "final_round",
+    ]:
         if c not in j.columns:
             j[c] = 0
         j[c] = j[c].fillna(0).astype(int)
@@ -134,17 +137,23 @@ def compute_role_summary(entities: dict[str, pd.DataFrame]) -> pd.DataFrame:
         "department", "location",
         "hiring_manager", "recruiter",
         "days_open",
-        "applied", "live", "in_interview", "offer", "rejected", "hired",
+        "applied", "live", "in_interview",
+        "round_1", "round_2", "round_3", "round_4", "final_round",
+        "offer", "rejected", "hired",
         "last_activity_at",
     ]].copy()
     return out
 
 
 def _counts_by_job(apps: pd.DataFrame) -> pd.DataFrame:
-    cols = ["job_id", "applied", "live", "in_interview", "offer", "rejected", "hired"]
+    cols = [
+        "job_id", "applied", "live", "in_interview", "offer", "rejected", "hired",
+        "round_1", "round_2", "round_3", "round_4", "final_round",
+    ]
     if apps.empty or "job.id" not in apps.columns:
         return pd.DataFrame(columns=cols)
     stage_type = _col(apps, "currentInterviewStage.type").astype(str)
+    stage_title = _col(apps, "currentInterviewStage.title").astype(str)
     status = _col(apps, "status").astype(str)
     df = pd.DataFrame({
         "job_id": apps["job.id"].astype(str),
@@ -154,6 +163,11 @@ def _counts_by_job(apps: pd.DataFrame) -> pd.DataFrame:
         "offer": (stage_type == STAGE_TYPE_OFFER).astype(int),
         "rejected": (status == STAGE_TYPE_ARCHIVED).astype(int),
         "hired": (stage_type == STAGE_TYPE_HIRED).astype(int),
+        "round_1": (stage_title == "Round 1").astype(int),
+        "round_2": (stage_title == "Round 2").astype(int),
+        "round_3": (stage_title == "Round 3").astype(int),
+        "round_4": (stage_title == "Round 4").astype(int),
+        "final_round": (stage_title == "Final").astype(int),
     })
     return df.groupby("job_id", as_index=False).sum(numeric_only=True)
 

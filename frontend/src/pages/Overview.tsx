@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { AlertTriangle, ArrowRight } from "lucide-react";
-import { api, type FunnelBuckets, type RoleRow } from "@/lib/api";
+import { api, type FunnelBuckets, type RoleRow, type RoundSplit } from "@/lib/api";
 import { KPI } from "@/components/KPI";
 import { RoundsStrip } from "@/components/RoundsStrip";
 import { fmtInt, fmtPct, fmtDelta } from "@/lib/format";
@@ -219,7 +219,7 @@ function RolesCard({
   summary,
   rows,
 }: {
-  summary: FunnelBuckets & { total_roles: number };
+  summary: FunnelBuckets & RoundSplit & { total_roles: number };
   rows: RoleRow[];
 }) {
   return (
@@ -229,7 +229,7 @@ function RolesCard({
         <Link to="/roles" className="text-small text-brand-blue hover:underline">All roles →</Link>
       </div>
       <p className="mt-1 text-small text-ink-3">
-        So-what: which roles are moving, which are stalled. Totals row = everything currently listed + open.
+        So-what: for every listed + open role, the exact per-round breakdown. Totals row on top.
       </p>
 
       {/* mobile cards */}
@@ -243,12 +243,18 @@ function RolesCard({
                 {r.hiring_manager && <HMChip name={r.hiring_manager} />}
               </div>
             </div>
-            <div className="mt-2 grid grid-cols-5 gap-1 text-center">
+            <div className="mt-2 grid grid-cols-4 gap-1 text-center">
               <Stat label="Applied" value={r.applied} />
               <Stat label="Live" value={r.live} />
-              <Stat label="Intvs" value={r.in_interview} />
               <Stat label="Offer" value={r.offer} />
               <Stat label="Rej" value={r.rejected} />
+            </div>
+            <div className="mt-2 grid grid-cols-5 gap-1 text-center border-t border-hairline pt-2">
+              <Stat label="R1" value={r.round_1} />
+              <Stat label="R2" value={r.round_2} />
+              <Stat label="R3" value={r.round_3} />
+              <Stat label="R4" value={r.round_4} />
+              <Stat label="Final" value={r.final_round} />
             </div>
           </Link>
         ))}
@@ -262,46 +268,59 @@ function RolesCard({
         <table className="w-full text-body">
           <thead className="text-caption text-ink-3">
             <tr className="text-left">
-              <th className="py-2 pr-4 font-medium">Role</th>
-              <th className="py-2 pr-4 font-medium num text-right">Applied</th>
-              <th className="py-2 pr-4 font-medium num text-right">Live</th>
-              <th className="py-2 pr-4 font-medium num text-right">Interviews</th>
-              <th className="py-2 pr-4 font-medium num text-right">Offer</th>
-              <th className="py-2 pr-4 font-medium num text-right">Rejected</th>
+              <th className="py-2 pr-3 font-medium">Role</th>
+              <th className="py-2 pr-3 font-medium num text-right">Applied</th>
+              <th className="py-2 pr-3 font-medium num text-right">Live</th>
+              <th className="py-2 pr-2 font-medium num text-right">R1</th>
+              <th className="py-2 pr-2 font-medium num text-right">R2</th>
+              <th className="py-2 pr-2 font-medium num text-right">R3</th>
+              <th className="py-2 pr-2 font-medium num text-right">R4</th>
+              <th className="py-2 pr-2 font-medium num text-right">Final</th>
+              <th className="py-2 pr-3 font-medium num text-right">Offer</th>
+              <th className="py-2 pr-3 font-medium num text-right">Rejected</th>
             </tr>
           </thead>
           <tbody>
-            {/* Summary row on top */}
             <tr className="border-t-2 border-ink/20 bg-paper-2 font-medium">
-              <td className="py-2 pr-4">
+              <td className="py-2 pr-3">
                 <div>All listed + open roles</div>
-                <div className="text-caption text-ink-3 font-normal">{summary.total_roles} role{summary.total_roles === 1 ? "" : "s"}</div>
+                <div className="text-caption text-ink-3 font-normal">
+                  {summary.total_roles} role{summary.total_roles === 1 ? "" : "s"}
+                </div>
               </td>
-              <td className="py-2 pr-4 num text-right tnum">{fmtInt(summary.applied)}</td>
-              <td className="py-2 pr-4 num text-right tnum">{fmtInt(summary.live)}</td>
-              <td className="py-2 pr-4 num text-right tnum">{fmtInt(summary.in_interview)}</td>
-              <td className="py-2 pr-4 num text-right tnum">{fmtInt(summary.offer)}</td>
-              <td className="py-2 pr-4 num text-right tnum text-ink-3">{fmtInt(summary.rejected)}</td>
+              <td className="py-2 pr-3 num text-right tnum">{fmtInt(summary.applied)}</td>
+              <td className="py-2 pr-3 num text-right tnum">{fmtInt(summary.live)}</td>
+              <td className="py-2 pr-2 num text-right tnum">{fmtInt(summary.round_1)}</td>
+              <td className="py-2 pr-2 num text-right tnum">{fmtInt(summary.round_2)}</td>
+              <td className="py-2 pr-2 num text-right tnum">{fmtInt(summary.round_3)}</td>
+              <td className="py-2 pr-2 num text-right tnum">{fmtInt(summary.round_4)}</td>
+              <td className="py-2 pr-2 num text-right tnum">{fmtInt(summary.final_round)}</td>
+              <td className="py-2 pr-3 num text-right tnum">{fmtInt(summary.offer)}</td>
+              <td className="py-2 pr-3 num text-right tnum text-ink-3">{fmtInt(summary.rejected)}</td>
             </tr>
 
             {rows.map((r) => (
               <tr key={r.job_id} className="border-t border-hairline hover:bg-paper-2">
-                <td className="py-2 pr-4">
+                <td className="py-2 pr-3">
                   <Link to={`/roles/${r.job_id}`} className="hover:underline">{r.title}</Link>
                   {r.hiring_manager && (
                     <div className="mt-0.5"><HMChip name={r.hiring_manager} /></div>
                   )}
                 </td>
-                <td className="py-2 pr-4 num text-right tnum">{fmtInt(r.applied)}</td>
-                <td className="py-2 pr-4 num text-right tnum">{fmtInt(r.live)}</td>
-                <td className="py-2 pr-4 num text-right tnum">{fmtInt(r.in_interview)}</td>
-                <td className="py-2 pr-4 num text-right tnum">{fmtInt(r.offer)}</td>
-                <td className="py-2 pr-4 num text-right tnum text-ink-3">{fmtInt(r.rejected)}</td>
+                <td className="py-2 pr-3 num text-right tnum">{fmtInt(r.applied)}</td>
+                <td className="py-2 pr-3 num text-right tnum">{fmtInt(r.live)}</td>
+                <td className={roundCell(r.round_1)}>{fmtInt(r.round_1)}</td>
+                <td className={roundCell(r.round_2)}>{fmtInt(r.round_2)}</td>
+                <td className={roundCell(r.round_3)}>{fmtInt(r.round_3)}</td>
+                <td className={roundCell(r.round_4)}>{fmtInt(r.round_4)}</td>
+                <td className={roundCell(r.final_round)}>{fmtInt(r.final_round)}</td>
+                <td className="py-2 pr-3 num text-right tnum">{fmtInt(r.offer)}</td>
+                <td className="py-2 pr-3 num text-right tnum text-ink-3">{fmtInt(r.rejected)}</td>
               </tr>
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={6} className="py-8 text-center text-ink-3">No listed + open roles.</td>
+                <td colSpan={10} className="py-8 text-center text-ink-3">No listed + open roles.</td>
               </tr>
             )}
           </tbody>
@@ -311,18 +330,30 @@ function RolesCard({
   );
 }
 
-function SummaryCard({ summary }: { summary: FunnelBuckets & { total_roles: number } }) {
+function roundCell(n: number): string {
+  const base = "py-2 pr-2 num text-right tnum ";
+  if (n === 0) return base + "text-ink-3/50";
+  return base;
+}
+
+function SummaryCard({ summary }: { summary: FunnelBuckets & RoundSplit & { total_roles: number } }) {
   return (
     <div className="rounded-lg bg-ink text-paper p-3">
       <div className="text-caption uppercase tracking-wide text-paper/70">
         {summary.total_roles} open role{summary.total_roles === 1 ? "" : "s"} — totals
       </div>
-      <div className="mt-2 grid grid-cols-5 gap-1 text-center">
+      <div className="mt-2 grid grid-cols-4 gap-1 text-center">
         <Stat label="Applied" value={summary.applied} tone="dark" />
         <Stat label="Live" value={summary.live} tone="dark" />
-        <Stat label="Intvs" value={summary.in_interview} tone="dark" />
         <Stat label="Offer" value={summary.offer} tone="dark" />
         <Stat label="Rej" value={summary.rejected} tone="dark" />
+      </div>
+      <div className="mt-2 grid grid-cols-5 gap-1 text-center border-t border-paper/20 pt-2">
+        <Stat label="R1" value={summary.round_1} tone="dark" />
+        <Stat label="R2" value={summary.round_2} tone="dark" />
+        <Stat label="R3" value={summary.round_3} tone="dark" />
+        <Stat label="R4" value={summary.round_4} tone="dark" />
+        <Stat label="Final" value={summary.final_round} tone="dark" />
       </div>
     </div>
   );

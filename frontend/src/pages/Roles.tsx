@@ -6,7 +6,9 @@ import { fmtInt, fmtRelative } from "@/lib/format";
 
 type SortKey = keyof Pick<
   Role,
-  "title" | "hiring_manager" | "days_open" | "applied" | "live" | "in_interview" | "offer" | "rejected" | "status"
+  "title" | "hiring_manager" | "days_open" | "applied" | "live"
+  | "round_1" | "round_2" | "round_3" | "round_4" | "final_round"
+  | "offer" | "rejected" | "status"
 >;
 
 export function Roles() {
@@ -90,19 +92,23 @@ export function Roles() {
           <thead className="text-caption text-ink-3 bg-paper-2 sticky top-0">
             <tr className="text-left">
               <Th k="title" label="Role" onSort={sortOn} active={sortKey} dir={sortDir} />
-              <Th k="days_open" label="Days open" numeric onSort={sortOn} active={sortKey} dir={sortDir} />
+              <Th k="days_open" label="Days" numeric onSort={sortOn} active={sortKey} dir={sortDir} />
               <Th k="applied" label="Applied" numeric onSort={sortOn} active={sortKey} dir={sortDir} />
               <Th k="live" label="Live" numeric onSort={sortOn} active={sortKey} dir={sortDir} />
-              <Th k="in_interview" label="Interviews" numeric onSort={sortOn} active={sortKey} dir={sortDir} />
+              <Th k="round_1" label="R1" numeric onSort={sortOn} active={sortKey} dir={sortDir} />
+              <Th k="round_2" label="R2" numeric onSort={sortOn} active={sortKey} dir={sortDir} />
+              <Th k="round_3" label="R3" numeric onSort={sortOn} active={sortKey} dir={sortDir} />
+              <Th k="round_4" label="R4" numeric onSort={sortOn} active={sortKey} dir={sortDir} />
+              <Th k="final_round" label="Final" numeric onSort={sortOn} active={sortKey} dir={sortDir} />
               <Th k="offer" label="Offer" numeric onSort={sortOn} active={sortKey} dir={sortDir} />
-              <Th k="rejected" label="Rejected" numeric onSort={sortOn} active={sortKey} dir={sortDir} />
+              <Th k="rejected" label="Rej" numeric onSort={sortOn} active={sortKey} dir={sortDir} />
               <Th k="status" label="Status" onSort={sortOn} active={sortKey} dir={sortDir} />
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.job_id} className="border-t border-hairline hover:bg-paper-2">
-                <td className="py-2 px-4">
+                <td className="py-2 px-3">
                   <Link to={`/roles/${r.job_id}`} className="hover:underline">{r.title}</Link>
                   {r.hiring_manager && (
                     <div className="mt-0.5">
@@ -111,19 +117,23 @@ export function Roles() {
                   )}
                 </td>
                 <td className={daysOpenClass(r.days_open)}>{fmtInt(r.days_open)}</td>
-                <td className="py-2 px-4 text-right num tnum">{fmtInt(r.applied)}</td>
-                <td className="py-2 px-4 text-right num tnum">{fmtInt(r.live)}</td>
-                <td className="py-2 px-4 text-right num tnum">{fmtInt(r.in_interview)}</td>
-                <td className="py-2 px-4 text-right num tnum">{fmtInt(r.offer)}</td>
-                <td className="py-2 px-4 text-right num tnum text-ink-3">{fmtInt(r.rejected)}</td>
-                <td className="py-2 px-4">
+                <td className="py-2 px-3 text-right num tnum">{fmtInt(r.applied)}</td>
+                <td className="py-2 px-3 text-right num tnum">{fmtInt(r.live)}</td>
+                <td className={roundCell(r.round_1)}>{fmtInt(r.round_1)}</td>
+                <td className={roundCell(r.round_2)}>{fmtInt(r.round_2)}</td>
+                <td className={roundCell(r.round_3)}>{fmtInt(r.round_3)}</td>
+                <td className={roundCell(r.round_4)}>{fmtInt(r.round_4)}</td>
+                <td className={roundCell(r.final_round)}>{fmtInt(r.final_round)}</td>
+                <td className="py-2 px-3 text-right num tnum">{fmtInt(r.offer)}</td>
+                <td className="py-2 px-3 text-right num tnum text-ink-3">{fmtInt(r.rejected)}</td>
+                <td className="py-2 px-3">
                   <StatusChip status={r.status} listed={r.is_listed} />
                 </td>
               </tr>
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={8} className="py-8 text-center text-ink-3">No roles match.</td>
+                <td colSpan={12} className="py-8 text-center text-ink-3">No roles match.</td>
               </tr>
             )}
           </tbody>
@@ -147,12 +157,18 @@ export function Roles() {
               </div>
               <StatusChip status={r.status} listed={r.is_listed} />
             </div>
-            <div className="mt-2 grid grid-cols-5 gap-1 text-center">
+            <div className="mt-2 grid grid-cols-4 gap-1 text-center">
               <Stat label="Applied" value={r.applied} />
               <Stat label="Live" value={r.live} />
-              <Stat label="Intvs" value={r.in_interview} />
               <Stat label="Offer" value={r.offer} />
               <Stat label="Rej" value={r.rejected} />
+            </div>
+            <div className="mt-2 grid grid-cols-5 gap-1 text-center border-t border-hairline pt-2">
+              <Stat label="R1" value={r.round_1} />
+              <Stat label="R2" value={r.round_2} />
+              <Stat label="R3" value={r.round_3} />
+              <Stat label="R4" value={r.round_4} />
+              <Stat label="Final" value={r.final_round} />
             </div>
             <div className="mt-1 text-caption text-ink-3">
               Open {fmtInt(r.days_open)}d · updated {fmtRelative(r.last_activity_at)}
@@ -180,9 +196,15 @@ function Th({
 }
 
 function daysOpenClass(d: number | null): string {
-  const base = "py-2 px-4 text-right num tabular-nums ";
+  const base = "py-2 px-3 text-right num tabular-nums ";
   if (d == null) return base + "text-ink-3";
   if (d > 60) return base + "text-brand-orange-ink font-medium";
+  return base;
+}
+
+function roundCell(n: number): string {
+  const base = "py-2 px-2 text-right num tabular-nums ";
+  if (n === 0) return base + "text-ink-3/50";
   return base;
 }
 

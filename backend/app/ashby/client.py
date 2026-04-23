@@ -35,7 +35,7 @@ class AshbyClient:
         self,
         api_key: str | None = None,
         base_url: str | None = None,
-        max_concurrency: int = 8,
+        max_concurrency: int = 4,
         timeout: float = 60.0,
     ) -> None:
         self.api_key = api_key or settings.ashby_api_key

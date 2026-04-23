@@ -93,8 +93,16 @@ def overview() -> dict[str, Any]:
         }
 
     # ----- Roles table for the home page -----
-    roles_cols = ["job_id", "title", "hiring_manager", "applied", "live", "in_interview", "offer", "rejected"]
+    roles_cols = [
+        "job_id", "title", "hiring_manager", "applied", "live",
+        "round_1", "round_2", "round_3", "round_4", "final_round",
+        "offer", "rejected",
+    ]
     roles_rows: list[dict[str, Any]] = []
+
+    def _sum(col: str) -> int:
+        return int(listed_open[col].sum()) if (not listed_open.empty and col in listed_open.columns) else 0
+
     roles_summary = {
         "total_roles": int(len(listed_open)),
         "applied": funnel["applied"],
@@ -102,6 +110,11 @@ def overview() -> dict[str, Any]:
         "in_interview": funnel["in_interview"],
         "offer": funnel["offer"],
         "rejected": funnel["rejected"],
+        "round_1": _sum("round_1"),
+        "round_2": _sum("round_2"),
+        "round_3": _sum("round_3"),
+        "round_4": _sum("round_4"),
+        "final_round": _sum("final_round"),
     }
     if not listed_open.empty:
         tbl = listed_open[roles_cols].sort_values("applied", ascending=False)

@@ -15,6 +15,7 @@ cache.derived owns that and is invoked from the API layer (Phase 2+).
 from __future__ import annotations
 
 import asyncio
+import gc
 import logging
 import time
 from datetime import datetime, timezone
@@ -31,6 +32,10 @@ from app.cache import store
 logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[str, str, dict[str, Any]], None]  # (entity_name, event, payload)
+
+# Entities whose full list won't fit comfortably alongside another full list
+# on a 512 MB Railway Hobby container. We run these sequentially.
+_HEAVY = {"candidates", "applications"}
 
 
 def _now_iso() -> str:
@@ -221,11 +226,34 @@ async def run_sync(
                 on_entity_event(e.name, "completed", result)
             return result
 
-        tasks = []
-        for e in ENTITIES:
+        # Memory discipline: small entities run in parallel (their DFs are tiny),
+        # then the two big ones (candidates + applications) run sequentially so
+        # their page lists never coexist in memory. Each is gc.collect()'d after.
+        results_by_name: dict[str, Any] = {}
+
+        light = [e for e in ENTITIES if e.name not in _HEAVY]
+        heavy = [e for e in ENTITIES if e.name in _HEAVY]
+
+        light_tasks = []
+        for e in light:
             saved_token = prev_entities.get(e.name, {}).get("syncToken")
-            tasks.append(_wrap(e, saved_token))
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+            light_tasks.append(_wrap(e, saved_token))
+        light_res = await asyncio.gather(*light_tasks, return_exceptions=True)
+        for e, r in zip(light, light_res):
+            results_by_name[e.name] = r
+        gc.collect()
+
+        for e in heavy:
+            saved_token = prev_entities.get(e.name, {}).get("syncToken")
+            try:
+                r: Any = await _wrap(e, saved_token)
+            except Exception as exc:
+                r = exc
+            results_by_name[e.name] = r
+            gc.collect()
+
+        # ordered results matching ENTITIES (runner builds new_state below in that order)
+        results = [results_by_name[e.name] for e in ENTITIES]
 
         # Phase 2: application history. application.listHistory is gated behind
         # applicationId so we fan out. Incremental by default — full re-fetch only
@@ -233,6 +261,7 @@ async def run_sync(
         history_result = await _sync_application_history(
             client, results, on_entity_event, force_full=full
         )
+        gc.collect()
 
     new_entities: dict[str, Any] = dict(prev_entities)
     for entity, result in zip(ENTITIES, results):

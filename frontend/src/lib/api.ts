@@ -76,16 +76,23 @@ export type FunnelBuckets = {
   rejected: number;
 };
 
+export type RoundSplit = {
+  round_1: number;
+  round_2: number;
+  round_3: number;
+  round_4: number;
+  final_round: number;
+};
+
 export type RoleRow = {
   job_id: string;
   title: string;
   hiring_manager: string | null;
   applied: number;
   live: number;
-  in_interview: number;
   offer: number;
   rejected: number;
-};
+} & RoundSplit;
 
 export type RoundBreakdown = {
   stage: string;
@@ -107,7 +114,7 @@ export type Overview = {
     offerAcceptRate30d: number | null;
   };
   conversionFunnel: FunnelBuckets;
-  rolesSummary: FunnelBuckets & { total_roles: number };
+  rolesSummary: FunnelBuckets & RoundSplit & { total_roles: number };
   roles: RoleRow[];
   rounds: RoundBreakdown[];
   applicationsPerDay30d: { date: string; source: string; count: number }[];
@@ -183,7 +190,7 @@ export type Role = {
   rejected: number;
   hired: number;
   last_activity_at: string | null;
-};
+} & RoundSplit;
 
 export type RoleDetail = {
   meta: { jobId: string; title: string; status: string; createdAt: string; openedAt: string | null };
