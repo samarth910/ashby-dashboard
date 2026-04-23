@@ -13,6 +13,7 @@ from app.cache.registry import registry
 from app.config import REPO_ROOT, settings
 from app.security import IPAllowlistMiddleware
 from app.sync.scheduler import build_scheduler
+from app.sync.service import refresh_service
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,15 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     logger.info("scheduler started: incremental every %sh", settings.sync_interval_hours)
     app.state.scheduler = scheduler
+
+    # self-seed on first boot: if the volume is empty, kick off a full sync now
+    # so a brand-new deploy doesn't sit idle until the 6h cron fires.
+    snap = registry.snapshot()
+    total_rows = sum(snap.get("entities", {}).values())
+    if total_rows == 0:
+        logger.info("registry empty on startup; kicking off initial full sync")
+        refresh_service.start(full=True)
+
     try:
         yield
     finally:
