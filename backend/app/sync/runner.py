@@ -82,7 +82,9 @@ async def _sync_application_history(
             on_entity_event(name, "completed", payload)
         return payload
 
-    applications = store.load_entity("applications") or pd.DataFrame()
+    applications = store.load_entity("applications")
+    if applications is None:
+        applications = pd.DataFrame()
     existing = None if force_full else store.load_entity("application_history")
 
     todo = apps_needing_history(applications, existing)
@@ -258,9 +260,24 @@ async def run_sync(
         # Phase 2: application history. application.listHistory is gated behind
         # applicationId so we fan out. Incremental by default — full re-fetch only
         # for apps whose updatedAt moved past the cached history.
-        history_result = await _sync_application_history(
-            client, results, on_entity_event, force_full=full
-        )
+        # Wrapped: a history-phase failure must NOT prevent sync_state.json from
+        # being written for the base entities that succeeded.
+        try:
+            history_result = await _sync_application_history(
+                client, results, on_entity_event, force_full=full
+            )
+        except Exception as exc:
+            logger.exception("history phase crashed; base sync state will still persist")
+            history_result = {
+                "lastError": f"{type(exc).__name__}: {exc}",
+                "durationSec": 0.0,
+            }
+            if on_entity_event:
+                on_entity_event(
+                    "application_history",
+                    "failed",
+                    {"error": history_result["lastError"]},
+                )
         gc.collect()
 
     new_entities: dict[str, Any] = dict(prev_entities)
