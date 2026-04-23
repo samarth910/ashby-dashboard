@@ -17,7 +17,8 @@ from app.sync.service import refresh_service
 logger = logging.getLogger(__name__)
 
 
-def _tick() -> None:
+async def _tick() -> None:
+    # async so refresh_service.start runs on the event loop (asyncio.create_task needs it)
     job = refresh_service.start(full=False)
     logger.info("scheduled refresh tick -> job %s (%s)", job.id, job.status)
 

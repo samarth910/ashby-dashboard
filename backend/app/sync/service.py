@@ -84,7 +84,15 @@ class RefreshService:
             drop = self._order.pop(0)
             self._history.pop(drop, None)
 
-        task = asyncio.create_task(self._run(job, full=full))
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:  # pragma: no cover - defensive
+            logger.error("refresh_service.start called outside a running event loop")
+            job.status = "failed"
+            job.error = "no running event loop (call from an async endpoint)"
+            self._current = None
+            return job
+        task = loop.create_task(self._run(job, full=full))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         return job
