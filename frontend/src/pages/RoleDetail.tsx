@@ -4,8 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { api } from "@/lib/api";
 import { fmtInt, fmtPct } from "@/lib/format";
+import { TimelineList } from "@/components/Timeline";
 
-type Tab = "overview" | "activity";
+type Tab = "overview" | "timeline" | "activity";
 
 export function RoleDetail() {
   const { jobId = "" } = useParams();
@@ -15,6 +16,11 @@ export function RoleDetail() {
     queryKey: ["role-activity", jobId],
     queryFn: () => api.roleActivity(jobId, 7),
     enabled: tab === "activity" && !!jobId,
+  });
+  const timeline = useQuery({
+    queryKey: ["role-timeline", jobId],
+    queryFn: () => api.roleTimeline(jobId),
+    enabled: tab === "timeline" && !!jobId,
   });
 
   if (!jobId) return <div>Missing job id.</div>;
@@ -36,7 +42,7 @@ export function RoleDetail() {
           <p className="mt-1 text-body text-ink-3">How is this role doing?</p>
         </div>
         <div className="flex gap-1 text-body">
-          {(["overview", "activity"] as Tab[]).map((t) => (
+          {(["overview", "timeline", "activity"] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -128,6 +134,25 @@ export function RoleDetail() {
             </div>
           </section>
         </>
+      )}
+
+      {tab === "timeline" && (
+        <section className="card p-4">
+          <div className="flex items-baseline justify-between">
+            <h2 className="font-display text-h3">Candidate timelines</h2>
+            <span className="text-caption text-ink-3">from application.listHistory</span>
+          </div>
+          <p className="mt-1 text-small text-ink-3">
+            So-what: at a glance, who moved quickly through rounds vs. who is sitting too long.
+          </p>
+          <div className="mt-4">
+            {timeline.isLoading ? (
+              <div className="text-small text-ink-3">Loading timelines…</div>
+            ) : (
+              <TimelineList candidates={timeline.data?.data.candidates ?? []} />
+            )}
+          </div>
+        </section>
       )}
 
       {tab === "activity" && (
