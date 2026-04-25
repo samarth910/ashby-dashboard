@@ -32,6 +32,7 @@ from app.cache import store
 logger = logging.getLogger(__name__)
 
 ProgressCallback = Callable[[str, str, dict[str, Any]], None]  # (entity_name, event, payload)
+LogCallback = Callable[[str], None]  # (msg)
 
 # Entities whose full list won't fit comfortably alongside another full list
 # on a 512 MB Railway Hobby container. We run these sequentially.
@@ -60,6 +61,7 @@ async def _sync_application_history(
     on_entity_event: ProgressCallback | None,
     *,
     force_full: bool,
+    on_log: LogCallback | None = None,
 ) -> dict[str, Any] | None:
     """Fan out application.listHistory for every changed application.
 
@@ -106,9 +108,18 @@ async def _sync_application_history(
         "application_history: fan-out starting (%d of %d apps need refresh)",
         len(todo), total_apps,
     )
+    if on_log:
+        on_log(f"application_history: fan-out for {len(todo)} of {total_apps} apps")
 
     def _progress(done: int, total: int, failed: int) -> None:
         logger.info("application_history: %d/%d fetched (%d failed)", done, total, failed)
+        # post running totals back to the UI as a 'page' event for the modal
+        if on_entity_event is not None:
+            on_entity_event(
+                "application_history",
+                "page",
+                {"pages": done, "running_total": done},
+            )
 
     try:
         fresh = await fan_out_history(client, todo, on_progress=_progress)
@@ -151,17 +162,27 @@ async def sync_entity(
     saved_token: str | None,
     *,
     force_full: bool = False,
+    on_event: ProgressCallback | None = None,
 ) -> dict[str, Any]:
     """Fetch + write one entity. Returns a sync_state entry."""
     start = time.perf_counter()
     use_token = None if force_full else (saved_token if entity.supports_sync_token else None)
     kind: str
+
+    def _emit_page(pages: int, running_total: int) -> None:
+        if on_event is not None:
+            on_event(entity.name, "page", {"pages": pages, "running_total": running_total})
+
     try:
-        rows, final_token = await fetch_all(client, entity.endpoint, sync_token=use_token)
+        rows, final_token = await fetch_all(
+            client, entity.endpoint, sync_token=use_token, on_page=_emit_page
+        )
         kind = "incremental" if use_token else "full"
     except AshbyTokenExpired:
         logger.warning("%s: syncToken expired, downgrading to full", entity.name)
-        rows, final_token = await fetch_all(client, entity.endpoint, sync_token=None)
+        rows, final_token = await fetch_all(
+            client, entity.endpoint, sync_token=None, on_page=_emit_page
+        )
         kind = "full-after-expiry"
 
     new_df = pd.json_normalize(rows) if rows else pd.DataFrame()
@@ -201,12 +222,23 @@ async def run_sync(
     *,
     full: bool = False,
     on_entity_event: ProgressCallback | None = None,
+    on_log: LogCallback | None = None,
 ) -> dict[str, Any]:
-    """Run a full or incremental sync across all 13 entities in parallel.
+    """Run a full or incremental sync across all base entities + history fan-out.
 
     `on_entity_event` (if given) is called with (entity_name, event, payload)
-    where event is one of "started" | "completed" | "failed".
+    where event is one of "started" | "completed" | "failed" | "page".
+    `on_log` (if given) is called with prose status messages worth surfacing
+    to the UI sync modal (e.g. "phase 2: history fan-out for 20k apps").
     """
+    def _log(msg: str) -> None:
+        logger.info(msg)
+        if on_log is not None:
+            try:
+                on_log(msg)
+            except Exception:
+                pass
+
     prev_state = store.read_sync_state()
     prev_entities = dict(prev_state.get("entities", {}))
 
@@ -219,7 +251,7 @@ async def run_sync(
             if on_entity_event:
                 on_entity_event(e.name, "started", {})
             try:
-                result = await sync_entity(client, e, saved_token, force_full=full)
+                result = await sync_entity(client, e, saved_token, force_full=full, on_event=on_entity_event)
             except Exception as exc:
                 if on_entity_event:
                     on_entity_event(e.name, "failed", {"error": f"{type(exc).__name__}: {exc}"})
@@ -236,6 +268,7 @@ async def run_sync(
         light = [e for e in ENTITIES if e.name not in _HEAVY]
         heavy = [e for e in ENTITIES if e.name in _HEAVY]
 
+        _log(f"phase 0: light pass — {len(light)} entities in parallel")
         light_tasks = []
         for e in light:
             saved_token = prev_entities.get(e.name, {}).get("syncToken")
@@ -243,10 +276,12 @@ async def run_sync(
         light_res = await asyncio.gather(*light_tasks, return_exceptions=True)
         for e, r in zip(light, light_res):
             results_by_name[e.name] = r
+        _log("phase 0 complete")
         gc.collect()
 
         for e in heavy:
             saved_token = prev_entities.get(e.name, {}).get("syncToken")
+            _log(f"phase 1: starting {e.name} (sequential, large)")
             try:
                 r: Any = await _wrap(e, saved_token)
             except Exception as exc:
@@ -262,9 +297,10 @@ async def run_sync(
         # for apps whose updatedAt moved past the cached history.
         # Wrapped: a history-phase failure must NOT prevent sync_state.json from
         # being written for the base entities that succeeded.
+        _log("phase 2: history fan-out (1 call per application)")
         try:
             history_result = await _sync_application_history(
-                client, results, on_entity_event, force_full=full
+                client, results, on_entity_event, force_full=full, on_log=on_log
             )
         except Exception as exc:
             logger.exception("history phase crashed; base sync state will still persist")

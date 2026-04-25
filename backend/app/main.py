@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import health, overview, people, pipeline, refresh, roles, sources, velocity
+from app.api import funnel, health, overview, people, pipeline, refresh, roles, sources, velocity
 from app.cache.registry import registry
 from app.config import REPO_ROOT, settings
 from app.security import IPAllowlistMiddleware
@@ -62,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(sources.router)
     app.include_router(people.router)
     app.include_router(pipeline.router)
+    app.include_router(funnel.router)
 
     # serve the built frontend (if present). In dev, Vite runs on :5173 and
     # proxies /api -> this server; this mount is only used in prod / Railway.

@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     ashby_api_key: str = ""
     ashby_base_url: str = "https://api.ashbyhq.com"
     data_dir: Path = REPO_ROOT / "data"
-    sync_interval_hours: int = 6
+    sync_interval_hours: int = 4
     allowed_ips: str = ""
     app_port: int = 8000
     app_log_level: str = "info"

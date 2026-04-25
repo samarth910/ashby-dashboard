@@ -28,8 +28,16 @@ class EntityProgress:
     state: str = "pending"     # pending | running | success | failed
     count: int = 0
     fetched: int = 0
+    pages: int = 0
     duration_sec: float | None = None
     error: str | None = None
+
+
+@dataclass
+class LogLine:
+    ts: str
+    level: str   # info | warn | error
+    msg: str
 
 
 @dataclass
@@ -42,6 +50,7 @@ class RefreshJob:
     duration_sec: float | None = None
     error: str | None = None
     entities: dict[str, EntityProgress] = field(default_factory=dict)
+    logs: list[LogLine] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
@@ -100,38 +109,70 @@ class RefreshService:
         return job
 
     async def _run(self, job: RefreshJob, *, full: bool) -> None:
+        def _append_log(level: str, msg: str) -> None:
+            job.logs.append(LogLine(ts=_now_iso(), level=level, msg=msg))
+            if len(job.logs) > 500:
+                del job.logs[: len(job.logs) - 500]
+
+        def on_log(msg: str, level: str = "info") -> None:
+            _append_log(level, msg)
+
         def on_event(name: str, event: str, payload: dict[str, Any]) -> None:
             entry = job.entities.get(name)
             if entry is None:
                 return
             if event == "started":
                 entry.state = "running"
+                _append_log("info", f"{name}: started")
             elif event == "completed":
                 entry.state = "failed" if payload.get("lastError") else "success"
                 entry.count = int(payload.get("rowCount", 0))
                 entry.fetched = int(payload.get("fetchedThisRun", 0))
                 entry.duration_sec = payload.get("durationSec")
                 entry.error = payload.get("lastError")
+                if entry.error:
+                    _append_log("error", f"{name}: FAILED — {entry.error}")
+                else:
+                    _append_log(
+                        "info",
+                        f"{name}: succeeded — {entry.fetched} fetched, {entry.count} total in {entry.duration_sec}s",
+                    )
             elif event == "failed":
                 entry.state = "failed"
                 entry.error = payload.get("error")
+                _append_log("error", f"{name}: {entry.error}")
+            elif event == "page":
+                entry.pages = int(payload.get("pages", entry.pages + 1))
+                got = int(payload.get("running_total", entry.fetched))
+                entry.fetched = got
+                # only log every 5 pages to keep log bounded for chatty entities
+                if entry.pages % 5 == 0 or entry.pages <= 2:
+                    _append_log("info", f"{name}: page {entry.pages}, {got} rows so far")
 
         try:
             async with self._run_lock:
                 t0 = _now_ts()
-                await run_sync(full=full, on_entity_event=on_event)
+                _append_log("info", f"sync started ({'full' if full else 'incremental'})")
+                await run_sync(full=full, on_entity_event=on_event, on_log=on_log)
                 job.duration_sec = round(_now_ts() - t0, 2)
                 # swap live DataFrames so API endpoints see fresh data
                 try:
                     registry.reload_from_disk()
-                except Exception:
+                    _append_log("info", "registry reloaded with fresh DataFrames")
+                except Exception as e:
                     logger.exception("registry reload after sync failed")
+                    _append_log("error", f"registry reload failed: {e}")
             any_err = any(e.error for e in job.entities.values())
             job.status = "partial" if any_err else "success"
+            _append_log(
+                "info",
+                f"sync {job.status} in {job.duration_sec}s",
+            )
         except Exception as exc:  # pragma: no cover - surfaces to /api/health
             logger.exception("refresh %s crashed", job.id)
             job.status = "failed"
             job.error = f"{type(exc).__name__}: {exc}"
+            _append_log("error", f"sync crashed: {job.error}")
         finally:
             job.completed_at = _now_iso()
             if self._current is job:

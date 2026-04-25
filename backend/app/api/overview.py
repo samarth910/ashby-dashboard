@@ -1,7 +1,8 @@
-"""/api/overview — KPIs + conversion funnel + roles table (listed+open) + stuck strip.
+"""/api/overview — Home page payload.
 
-Stage-movement chart and "days open" are deliberately omitted from this endpoint:
-product decision on 2026-04-22.
+Six headline KPIs, dept-grouped roles each with the same metrics, weekly
+applications-by-source trend, and a stuck-candidate callout with per-stage
+SLA breach detection from stage_current_residents.
 """
 
 from __future__ import annotations
@@ -12,7 +13,8 @@ import pandas as pd
 from fastapi import APIRouter
 
 from app.api._common import envelope, to_records
-from app.api.pipeline import _rounds_summary
+from app.api.funnel import _team_for_job
+from app.api.pipeline import STAGE_SLA_DAYS
 from app.cache.registry import registry
 
 router = APIRouter()
@@ -29,155 +31,138 @@ def _ts(s: pd.Series) -> pd.Series:
 @router.get("/api/overview")
 def overview() -> dict[str, Any]:
     apps = registry.get("applications")
-    offers = registry.get("offers")
     rs = registry.derived("role_summary")
+    residents = registry.derived("stage_current_residents")
+    job_postings = registry.get("job_postings")
 
-    now = pd.Timestamp.now(tz="UTC")
-    week_ago = now - pd.Timedelta(days=7)
-    prev_week_start = now - pd.Timedelta(days=14)
-    month_ago = now - pd.Timedelta(days=30)
-
-    # only count roles that are posted AND open
-    listed_open = (
-        rs[rs["is_listed_open"]].copy() if rs is not None and "is_listed_open" in rs.columns else pd.DataFrame()
-    )
+    listed_open = rs[rs["is_listed_open"]].copy() if (rs is not None and "is_listed_open" in rs.columns) else pd.DataFrame()
     listed_open_ids: set[str] = set(listed_open["job_id"].astype(str)) if not listed_open.empty else set()
 
-    # Scope every application-level view on Overview to listed+open jobs.
-    # (Everything on this page is about roles currently being recruited for.)
     apps_scoped = (
         apps.loc[_col(apps, "job.id").astype(str).isin(listed_open_ids)].copy()
         if apps is not None and not apps.empty and listed_open_ids
         else pd.DataFrame()
     )
 
-    # ----- KPIs -----
-    open_roles = int(len(listed_open))
-
-    total_live = 0
-    apps_last_7 = 0
-    apps_prev_7 = 0
+    # ---- Six headline KPIs ----
+    applicants = int(len(apps_scoped))
+    in_review = 0
+    in_interview = 0
+    rejected = 0
     if not apps_scoped.empty:
+        stype = _col(apps_scoped, "currentInterviewStage.type").astype(str)
         status = _col(apps_scoped, "status").astype(str)
-        total_live = int((~status.isin(["Archived", "Hired"])).sum())
-        if "createdAt" in apps_scoped.columns:
-            created = _ts(apps_scoped["createdAt"])
-            apps_last_7 = int(((created >= week_ago) & (created <= now)).sum())
-            apps_prev_7 = int(((created >= prev_week_start) & (created < week_ago)).sum())
+        in_review = int((stype == "PreInterviewScreen").sum())
+        in_interview = int((stype == "Active").sum())
+        rejected = int((status == "Archived").sum())
 
-    offers_outstanding = 0
-    offer_accept_rate_30d: float | None = None
-    if offers is not None and not offers.empty and "status" in offers.columns:
-        ostatus = offers["status"].astype(str).str.lower()
-        offers_outstanding = int(ostatus.isin(["pending", "sent", "outstanding"]).sum())
-        decided_col = "decidedAt" if "decidedAt" in offers.columns else (
-            "updatedAt" if "updatedAt" in offers.columns else None
-        )
-        if decided_col:
-            decided = _ts(offers[decided_col])
-            recent = decided >= month_ago
-            accepted = int((recent & (ostatus == "accepted")).sum())
-            resolved = int((recent & ostatus.isin(["accepted", "declined", "rejected"])).sum())
-            offer_accept_rate_30d = round(accepted / resolved, 3) if resolved else None
+    # Conversion = past-review rate. Hired/offered too low at this stage to be a useful headline.
+    conversion_pct: float | None = None
+    if applicants > 0:
+        past_review = applicants - in_review - rejected
+        conversion_pct = round(past_review / applicants, 4)
 
-    # ----- Org conversion funnel (applied -> live -> interview -> offer -> rejected) -----
-    # Scoped to applications attached to listed+open jobs.
-    funnel = {"applied": 0, "live": 0, "in_interview": 0, "offer": 0, "rejected": 0}
-    if not listed_open.empty:
-        funnel = {
-            "applied": int(listed_open["applied"].sum()),
-            "live": int(listed_open["live"].sum()),
-            "in_interview": int(listed_open["in_interview"].sum()),
-            "offer": int(listed_open["offer"].sum()),
-            "rejected": int(listed_open["rejected"].sum()),
-        }
+    # Fill rate: TBD per request — hired-to-headcount once we have hired data
+    fill_rate: float | None = None  # placeholder
 
-    # ----- Roles table for the home page -----
-    roles_cols = [
-        "job_id", "title", "hiring_manager", "applied", "live",
-        "round_1", "round_2", "round_3", "round_4", "final_round",
-        "offer", "rejected",
-    ]
+    # ---- Roles (grouped by team) ----
     roles_rows: list[dict[str, Any]] = []
-
-    def _sum(col: str) -> int:
-        return int(listed_open[col].sum()) if (not listed_open.empty and col in listed_open.columns) else 0
-
-    roles_summary = {
-        "total_roles": int(len(listed_open)),
-        "applied": funnel["applied"],
-        "live": funnel["live"],
-        "in_interview": funnel["in_interview"],
-        "offer": funnel["offer"],
-        "rejected": funnel["rejected"],
-        "round_1": _sum("round_1"),
-        "round_2": _sum("round_2"),
-        "round_3": _sum("round_3"),
-        "round_4": _sum("round_4"),
-        "final_round": _sum("final_round"),
-    }
     if not listed_open.empty:
-        tbl = listed_open[roles_cols].sort_values("applied", ascending=False)
-        roles_rows = to_records(tbl)
+        for _, r in listed_open.iterrows():
+            jid = str(r["job_id"])
+            roles_rows.append({
+                "job_id": jid,
+                "title": str(r.get("title")),
+                "team": _team_for_job(job_postings, jid) or "Other",
+                "hiring_manager": r.get("hiring_manager"),
+                "applicants": int(r.get("applied", 0)),
+                "in_review": int(_review_for_job(apps_scoped, jid)),
+                "in_interview": int(r.get("in_interview", 0)),
+                "offer": int(r.get("offer", 0)),
+                "rejected": int(r.get("rejected", 0)),
+            })
 
-    # ----- Applications per day (stacked by source), last 30 days -----
-    apps_per_day: list[dict[str, Any]] = []
+    grouped_roles: list[dict[str, Any]] = []
+    by_team: dict[str, list[dict[str, Any]]] = {}
+    for r in roles_rows:
+        by_team.setdefault(r["team"], []).append(r)
+    for team in sorted(by_team.keys(), key=lambda x: x.lower()):
+        items = sorted(by_team[team], key=lambda r: -r["applicants"])
+        total = {
+            "applicants": sum(r["applicants"] for r in items),
+            "in_review": sum(r["in_review"] for r in items),
+            "in_interview": sum(r["in_interview"] for r in items),
+            "offer": sum(r["offer"] for r in items),
+            "rejected": sum(r["rejected"] for r in items),
+        }
+        grouped_roles.append({"team": team, "total": total, "roles": items})
+
+    # ---- Weekly applications by source (last 7 days) ----
+    weekly_by_source: list[dict[str, Any]] = []
     if not apps_scoped.empty and "createdAt" in apps_scoped.columns:
+        now = pd.Timestamp.now(tz="UTC")
+        week_ago = now - pd.Timedelta(days=7)
         created = _ts(apps_scoped["createdAt"])
-        mask = (created >= month_ago) & (created <= now)
-        sub = apps_scoped.loc[mask].copy()
-        if not sub.empty:
-            sub["_date"] = created[mask].dt.date
-            source_col = "source.title" if "source.title" in sub.columns else None
-            sub["_src"] = sub[source_col].astype(str) if source_col else "Unknown"
-            sub = sub[~sub["_src"].isin({"Kula_Migrated", "Migrated_Kula", "Unspecified", "nan"})]
-            grouped = sub.groupby(["_date", "_src"], as_index=False).size().rename(columns={"size": "count"})
-            apps_per_day = [
+        recent = apps_scoped.loc[(created >= week_ago) & (created <= now)].copy()
+        if not recent.empty:
+            recent["_date"] = created.loc[recent.index].dt.date
+            src_col = "source.title" if "source.title" in recent.columns else None
+            recent["_src"] = recent[src_col].astype(str) if src_col else "Unknown"
+            recent = recent[~recent["_src"].isin({"Kula_Migrated", "Migrated_Kula", "Unspecified", "nan"})]
+            grp = recent.groupby(["_date", "_src"], as_index=False).size().rename(columns={"size": "count"})
+            weekly_by_source = [
                 {"date": str(r["_date"]), "source": str(r["_src"]), "count": int(r["count"])}
-                for _, r in grouped.iterrows()
+                for _, r in grp.iterrows()
             ]
 
-    # ----- Stuck candidates: top 5 by days-since-updated, active only, listed+open only -----
+    # ---- Stuck candidates (SLA-breach in current stage, listed+open scope) ----
     stuck: list[dict[str, Any]] = []
-    if not apps_scoped.empty:
-        status = _col(apps_scoped, "status").astype(str)
-        active = apps_scoped.loc[~status.isin(["Archived", "Hired"])]
-        if not active.empty and "updatedAt" in active.columns:
-            updated = _ts(active["updatedAt"])
-            days = ((now - updated).dt.total_seconds() / 86400).round().astype("Int64")
-            frame = pd.DataFrame({
-                "application_id": active["id"].astype(str),
-                "candidate_id": _col(active, "candidate.id").astype(str),
-                "candidate_name": _col(active, "candidate.name").astype(str),
-                "job_id": _col(active, "job.id").astype(str),
-                "job_title": _col(active, "job.title").astype(str),
-                "stage": _col(active, "currentInterviewStage.title").astype(str),
-                "days_since_update": days,
-            })
-            frame = frame.dropna(subset=["days_since_update"]).sort_values("days_since_update", ascending=False).head(5)
-            stuck = to_records(frame)
+    if residents is not None and not residents.empty:
+        scoped = residents[residents["is_listed_open"]].copy() if "is_listed_open" in residents.columns else residents.copy()
+        if not scoped.empty:
+            def _breach(row: pd.Series) -> bool:
+                sla = STAGE_SLA_DAYS.get(str(row.get("stage_title")))
+                if sla is None:
+                    return False
+                try:
+                    return float(row.get("days_in_stage", 0)) >= sla
+                except (TypeError, ValueError):
+                    return False
 
-    # ----- Per-round breakdown (listed+open scope) -----
-    rounds = _rounds_summary(registry.derived("stage_current_residents"))
+            scoped["_breach"] = scoped.apply(_breach, axis=1)
+            breached = scoped[scoped["_breach"]].sort_values("days_in_stage", ascending=False).head(10)
+            stuck = to_records(
+                breached[[
+                    "application_id", "candidate_id", "candidate_name",
+                    "job_id", "job_title", "hiring_manager",
+                    "stage_title", "days_in_stage",
+                ]]
+            )
 
-    loaded_at = registry.snapshot().get("loadedAt")
     return envelope(
         {
             "kpis": {
-                "openRoles": open_roles,
-                "totalInPipeline": total_live,
-                "applicationsLast7": apps_last_7,
-                "applicationsPrev7": apps_prev_7,
-                "applicationsDelta": apps_last_7 - apps_prev_7,
-                "offersOutstanding": offers_outstanding,
-                "offerAcceptRate30d": offer_accept_rate_30d,
+                "applicants": applicants,
+                "in_review": in_review,
+                "in_interview": in_interview,
+                "rejected": rejected,
+                "conversion_pct": conversion_pct,
+                "fill_rate": fill_rate,
             },
-            "conversionFunnel": funnel,
-            "rolesSummary": roles_summary,
-            "roles": roles_rows,
-            "rounds": rounds,
-            "applicationsPerDay30d": apps_per_day,
-            "stuckCandidates": stuck,
+            "roles_by_team": grouped_roles,
+            "total_roles": len(roles_rows),
+            "weekly_by_source": weekly_by_source,
+            "stuck": stuck,
         },
-        last_sync_at=loaded_at,
+        last_sync_at=registry.snapshot().get("loadedAt"),
     )
+
+
+def _review_for_job(apps_scoped: pd.DataFrame, job_id: str) -> int:
+    if apps_scoped.empty or "job.id" not in apps_scoped.columns:
+        return 0
+    sub = apps_scoped[apps_scoped["job.id"].astype(str) == job_id]
+    if sub.empty:
+        return 0
+    stype = _col(sub, "currentInterviewStage.type").astype(str)
+    return int((stype == "PreInterviewScreen").sum())

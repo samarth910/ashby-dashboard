@@ -37,7 +37,8 @@ export const api = {
       };
     }>,
 
-  overview: () => get<Overview>("/api/overview"),
+  home: () => get<HomePayload>("/api/overview"),
+  funnel: () => get<FunnelMatrix>("/api/funnel"),
   roles: (q: { status?: string; department?: string; hiring_manager?: string; scope?: "listed_open" | "open" | "all" } = {}) => {
     const qs = new URLSearchParams();
     if (q.status) qs.set("status", q.status);
@@ -103,31 +104,7 @@ export type RoundBreakdown = {
   sla_days: number | null;
 };
 
-export type Overview = {
-  kpis: {
-    openRoles: number;
-    totalInPipeline: number;
-    applicationsLast7: number;
-    applicationsPrev7: number;
-    applicationsDelta: number;
-    offersOutstanding: number;
-    offerAcceptRate30d: number | null;
-  };
-  conversionFunnel: FunnelBuckets;
-  rolesSummary: FunnelBuckets & RoundSplit & { total_roles: number };
-  roles: RoleRow[];
-  rounds: RoundBreakdown[];
-  applicationsPerDay30d: { date: string; source: string; count: number }[];
-  stuckCandidates: {
-    application_id: string;
-    candidate_id: string;
-    candidate_name: string;
-    job_id: string;
-    job_title: string;
-    stage: string;
-    days_since_update: number;
-  }[];
-};
+// (legacy Overview type removed; payload now returned as HomePayload)
 
 export type PipelineResident = {
   application_id: string;
@@ -252,5 +229,75 @@ export type RefreshJob = {
   duration_sec: number | null;
   error: string | null;
   progress: number;
-  entities: Record<string, { state: string; count: number; fetched: number; duration_sec: number | null; error: string | null }>;
+  entities: Record<
+    string,
+    { state: string; count: number; fetched: number; pages: number; duration_sec: number | null; error: string | null }
+  >;
+  logs: { ts: string; level: string; msg: string }[];
+};
+
+export type FunnelMatrix = {
+  stages: string[];
+  total_roles: number;
+  totals: { application_review: number; round_1: number; round_2: number; round_3: number; round_4: number; final_round: number; offer: number; rejected: number; applied: number; live: number };
+  groups: {
+    team: string;
+    total: { application_review: number; round_1: number; round_2: number; round_3: number; round_4: number; final_round: number; offer: number; rejected: number; applied: number; live: number };
+    roles: {
+      job_id: string;
+      title: string;
+      team: string;
+      hiring_manager: string | null;
+      application_review: number;
+      round_1: number;
+      round_2: number;
+      round_3: number;
+      round_4: number;
+      final_round: number;
+      offer: number;
+      rejected: number;
+      applied: number;
+      live: number;
+    }[];
+  }[];
+};
+
+export type HomeRoleRow = {
+  job_id: string;
+  title: string;
+  team: string;
+  hiring_manager: string | null;
+  applicants: number;
+  in_review: number;
+  in_interview: number;
+  offer: number;
+  rejected: number;
+};
+
+export type HomePayload = {
+  kpis: {
+    applicants: number;
+    in_review: number;
+    in_interview: number;
+    rejected: number;
+    conversion_pct: number | null;
+    fill_rate: number | null;
+  };
+  total_roles: number;
+  roles_by_team: {
+    team: string;
+    total: { applicants: number; in_review: number; in_interview: number; offer: number; rejected: number };
+    roles: HomeRoleRow[];
+  }[];
+  weekly_by_source: { date: string; source: string; count: number }[];
+  stuck: {
+    application_id: string;
+    candidate_id: string;
+    candidate_name: string;
+    job_id: string;
+    job_title: string;
+    hiring_manager: string | null;
+    stage_title: string;
+    days_in_stage: number;
+  }[];
 };
